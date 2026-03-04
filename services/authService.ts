@@ -30,8 +30,16 @@ export async function signUp(email: string, password: string): Promise<{ success
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, trimmed, password);
     const user = userCredential.user;
-    setSession(trimmed);
+
     await setUserMoney(user.uid, 10000.00)
+    userEmail = userCredential.user.email
+    userMoney = (await getUserMoney(userCredential.user.uid))
+    userId = userCredential.user.uid
+    console.log("Created user with the following credentials:")
+    console.log("ID: " + userId)
+    console.log("Email: " + userEmail);
+    console.log("Total money: " + userMoney);
+    setSession(trimmed);
     return { success : true };
   }
   catch (error: any) {
@@ -46,8 +54,9 @@ export async function login(email: string, password: string): Promise<{ success:
   try {
     const userCredential = await signInWithEmailAndPassword(auth, trimmed, password)
     userEmail = userCredential.user.email
-    userMoney = (await getUserMoney(userCredential.user.uid))
     userId = userCredential.user.uid
+    userMoney = (await getUserMoney(userCredential.user.uid))
+    /*
     const last = (await getLastDaily(userCredential.user.uid)).toDate();
     const now = new Date(Date.now());
     if (last == now) {
@@ -55,20 +64,21 @@ export async function login(email: string, password: string): Promise<{ success:
     }
     else {
       dailyBonusAvailable = "true";
-    }
-
-
-
-    setSession(trimmed);
+    }*/
+    console.log("Created user with the following credentials:")
+    console.log("ID: " + userId)
+    console.log("Email: " + userEmail);
+    console.log("Total money: " + userMoney);
+    setSession(userEmail);
     return { success : true };
   }
   catch (error: any) {
-
+    return error.toString()
   }
 }
 
 export function logout(): void {
-  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem("userEmail");
 }
 
 export function getSession(): string | null {
@@ -77,7 +87,7 @@ export function getSession(): string | null {
 
 function setSession(email: string) {
   localStorage.setItem(SESSION_KEY, email);
-  localStorage.setItem("userEmail", userEmail);
+  localStorage.setItem("userEmail", email);
   localStorage.setItem("userMoney", String(userMoney))
   localStorage.setItem("uid", userId);
   localStorage.setItem("hasDailyBonus", dailyBonusAvailable)

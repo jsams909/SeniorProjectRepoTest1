@@ -94,11 +94,11 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
       // this needs to be here, I dont know why it works and how it works but it works and im not going to touch it - ar
       localStorage.setItem("userMoney", "0")
       // Listen for changes going to the database.
-      listenForChange(localStorage.getItem("uid"))
+      /*listenForChange(localStorage.getItem("uid"))
       async function fetchData() {
         localStorage.setItem("userMoney", String(await getUserMoney(localStorage.getItem("uid"))))
       }
-      fetchData();
+      fetchData();*/
     }, []);
 
     switch (view) {

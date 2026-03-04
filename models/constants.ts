@@ -16,7 +16,7 @@ export const FIREBASE_CONFIG = {
   appId: "1:1007996245994:web:5d168e3055cb61a14d8493"
 }
 
-export const APP = initializeApp(FIREBASE_CONFIG)
+export var APP = initializeApp(FIREBASE_CONFIG)
 
 export const MOCK_LEADERBOARD: LeaderboardEntry[] = [
   { id: 'l1', name: 'CryptoWhale_99', avatar: 'CW', netWorth: 1450200, winRate: 72, rank: 1 },

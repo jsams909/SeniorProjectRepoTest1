@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { Market, MarketOption, Bet } from '../models';
 import { INITIAL_BALANCE, DAILY_BONUS_AMOUNT, BONUS_STORAGE_KEY } from '../models/constants';
-import {changeUserMoney} from "@/services/dbOps.ts";
+import {changeUserMoney, claimedDaily} from "@/services/dbOps.ts";
 
 
 /**
@@ -61,10 +61,13 @@ export function useBettingViewModel() {
           .then(r =>
               setBonusMessage(`+$${DAILY_BONUS_AMOUNT} added to your wallet!`),
               setBalance(prev => prev + DAILY_BONUS_AMOUNT))
+      localStorage.setItem("hasDailyBonus", "false");
+      claimedDaily(localStorage.getItem("uid"))
     }
     else {
-
+      setBonusMessage('Already claimed! Come back tomorrow for more.');
     }
+    setTimeout(() => setBonusMessage(null), 3000);
   }, [dailyBonusAvailable]);
 
   const clearBetSelection = useCallback(() => setBetSelection(null), []);
