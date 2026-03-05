@@ -1,10 +1,17 @@
 import { setDoc, doc, getDoc, getDocs, getFirestore, onSnapshot, collection, Timestamp } from "firebase/firestore";
 import {APP} from "@/models/constants.ts";
 import {Bet} from "@/models";
+import {getAuth} from "firebase/auth";
+
 
 const db = getFirestore(APP);
 export var currBets = new Array<Bet>;
 
+/**
+ * Returns the amount of money a user has in Firestore.
+ * @param uid A user's Firebase Authentication ID.
+ * @author Aidan Rodriguez
+ */
 export async function getUserMoney(uid : string) : Promise<number> {
 
     const documentReference = doc(db, "userInfo", uid);
@@ -19,24 +26,45 @@ export async function getUserMoney(uid : string) : Promise<number> {
     }
 }
 
+/**
+ * Sets a user's money in Firestore.
+ * @param uid A user's Firebase Authentication ID.
+ * @param amount The new amount that the user will have in Firestore.
+ * @author Aidan Rodriguez
+ */
 export async function setUserMoney(uid : string, amount : number) {
     await setDoc(doc(db, "userInfo", uid), {
         money: amount
     }, { merge : true});
 }
 
+/**
+ * Informs the database that a user has claimed their daily bonus by setting their last claimed date to the current time.
+ * @param uid A user's Firebase Authentication ID.
+ * @author Aidan Rodriguez
+ */
 export async function claimedDaily(uid : string) {
     await setDoc(doc(db, "userInfo", uid), {
         lastClaim: Timestamp.now()
     }, { merge: true})
 }
 
+/**
+ * Sets a user's last claim to 1/1/1900, used in the creation of a new user.
+ * @param uid A user's Firebase Authentication ID.
+ */
 export async function setNewDaily(uid : string) {
     var beginningOfTime = new Date(1900, 1, 1)
     await setDoc(doc(db, "userInfo", uid), {
         lastClaim: Timestamp.fromDate(beginningOfTime)
     }, { merge: true })
 }
+
+/**
+ * Adds to the user's current money in Firestore.
+ * @param uid A user's Firebase Authentication ID.
+ * @param amount The amount that will be added to the user's money (or in the case of a negative number, subtracted).
+ */
 export async function changeUserMoney(uid : string, amount : number) {
     const newMoney = ((await getUserMoney(uid)) + amount);
     await setDoc(doc(db, "userInfo", uid), {
@@ -45,6 +73,11 @@ export async function changeUserMoney(uid : string, amount : number) {
     }, { merge: true });
 }
 
+/**
+ * Listens for changes in the Firestore database, and updates the information in the application accordingly.
+ * @param uid A user's Firebase Authentication ID.
+ * @author Aidan Rodriguez
+ */
 export function listenForChange(uid : string) {
     const unsub = onSnapshot(doc(db, "userInfo", uid), (doc) => {
         const source = doc.metadata.hasPendingWrites ? "Local" : "Server";
@@ -64,6 +97,13 @@ export function listenForChange(uid : string) {
     })
 }
 
+/**
+ * Gets the last time a user claimed their daily bonus.
+ * @param uid A user's Firebase Authentication ID.
+ * @return The last time a user claimed their daily bonus as a Timestamp object. It should be also noted that this object
+ * is returned as a Promise.
+ * @author Aidan Rodriguez
+ */
 export async function getLastDaily(uid: string) {
     const documentReference = doc(db, "userInfo", uid);
     const documentSnapshot = await getDoc(documentReference);
@@ -76,6 +116,12 @@ export async function getLastDaily(uid: string) {
     }
 }
 
+/**
+ * Adds a bet to the Firestore database associated with a user.
+ * @param uid The user ID that the added bet will be associated with.
+ * @param bet The Bet object that will be uploaded to Firestore.
+ * @author Aidan Rodriguez
+ */
 export async function addBet(uid: string, bet: Bet) {
     await setDoc(doc(db, "bets", bet.id), {
         userID: uid,
@@ -90,6 +136,13 @@ export async function addBet(uid: string, bet: Bet) {
     currBets.push(bet)
 }
 
+/**
+ * Returns all bets associated with a user ID.
+ * @param uid The user ID that will be part of the request to Firestore for the data.
+ * @return Returns an Array of bets from Firestore associated with the user ID. If no bets are found, an empty Array is
+ * returned. It should be noted that this Array is returned as a Promise.
+ * @author Aidan Rodriguez
+ */
 export async function getBets(uid: string) : Promise<Bet[]> {
     var betList = new Array()
     const querySnapshot = await getDocs(collection(db, "bets"));
