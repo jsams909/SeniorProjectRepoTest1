@@ -22,8 +22,7 @@ import { Leaderboard } from '../components/Leaderboard';
 import { SocialView } from '../components/SocialView';
 import type { LeaderboardEntry, Friend, SocialActivity } from '../models';
 import { DAILY_BONUS_AMOUNT } from '../models/constants';
-import {getUserMoney, listenForChange} from "@/services/dbOps.ts";
-import {betList} from "@/services/authService.ts";
+import {getBets, getUserMoney, listenForChange} from "@/services/dbOps.ts";
 
 interface DashboardViewProps {
   balance: number;
@@ -57,6 +56,8 @@ interface DashboardViewProps {
   onChallenge: (friend: Friend) => void;
 }
 
+var localBets = await getBets(localStorage.getItem("uid"))
+
 export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   var {
     balance,
@@ -89,6 +90,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
     onChallenge,
   } = props;
 
+
   const renderContent = () => {
     useEffect(() => {
 
@@ -99,6 +101,8 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
         localStorage.setItem("userMoney", String(await getUserMoney(localStorage.getItem("uid"))))
       }
       fetchData();
+
+
     }, []);
 
     switch (view) {
@@ -113,8 +117,8 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
               <History className="text-blue-400" size={24} /> Betting History
             </h2>
             <div className="space-y-4">
-              {/*props.activeBets.length*/ betList.length > 0 ? (
-                /*props.activeBets*/betList.map(bet => (
+              {/*props.activeBets.length*/ localBets.length > 0 ? (
+                /*props.activeBets*/ localBets.map(bet => (
                   <div key={bet.id} className="glass-card rounded-2xl p-6 border-slate-800 hover:border-slate-700 transition-all">
                     <div className="flex justify-between items-start mb-4">
                       <div>

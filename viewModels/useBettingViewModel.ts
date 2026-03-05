@@ -44,20 +44,7 @@ export function useBettingViewModel() {
     setBetSelection(null);
   }, [betSelection]);
 
-  const handleDailyBonus = useCallback(() => {/*
-    if (!dailyBonusAvailable) {
-      setBonusMessage('Already claimed! Come back tomorrow for more.');
-      setTimeout(() => setBonusMessage(null), 3000);
-      return;
-    }
-    setBalance(prev => prev + DAILY_BONUS_AMOUNT);
-    try {
-      localStorage.setItem(BONUS_STORAGE_KEY, new Date().toISOString().slice(0, 10));
-    } catch { }
-    setDailyBonusAvailable(false);
-    setBonusMessage(`+$${DAILY_BONUS_AMOUNT} added to your wallet!`);
-    setTimeout(() => setBonusMessage(null), 3000);*/
-
+  const handleDailyBonus = useCallback(() => {
     if (localStorage.getItem("hasDailyBonus") == "true") {
       setDailyBonusAvailable(false);
       changeUserMoney(localStorage.getItem("uid"), DAILY_BONUS_AMOUNT)
