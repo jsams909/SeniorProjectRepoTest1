@@ -37,6 +37,7 @@ export async function signUp(email: string, password: string): Promise<{ success
     userEmail = userCredential.user.email
     userMoney = (await getUserMoney(userCredential.user.uid))
     userId = userCredential.user.uid
+    dailyBonusAvailable = "true"  // New users haven't claimed yet
     console.log("Logged in user with the following credentials:")
     console.log("ID: " + userId)
     console.log("Email: " + userEmail);
@@ -59,14 +60,16 @@ export async function login(email: string, password: string): Promise<{ success:
     userId = userCredential.user.uid
     userMoney = (await getUserMoney(userCredential.user.uid))
 
-    const last = (await getLastDaily(userCredential.user.uid)).toDate();
+    const lastClaim = await getLastDaily(userCredential.user.uid);
     const now = new Date(Date.now());
-    console.log(last.toString())
-    console.log(now.toString())
-    if (last.getDay() == now.getDay()) {
-      dailyBonusAvailable = "false";
-    }
-    else {
+    if (lastClaim) {
+      const last = lastClaim.toDate();
+      if (last.getDate() === now.getDate() && last.getMonth() === now.getMonth() && last.getFullYear() === now.getFullYear()) {
+        dailyBonusAvailable = "false";
+      } else {
+        dailyBonusAvailable = "true";
+      }
+    } else {
       dailyBonusAvailable = "true";
     }
     console.log("Created user with the following credentials:")

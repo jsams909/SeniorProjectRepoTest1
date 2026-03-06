@@ -73,28 +73,33 @@ export async function changeUserMoney(uid : string, amount : number) {
     }, { merge: true });
 }
 
+export type ListenForChangeCallback = (data: { money: number; hasDailyBonus: boolean }) => void;
+
 /**
  * Listens for changes in the Firestore database, and updates the information in the application accordingly.
  * @param uid A user's Firebase Authentication ID.
+ * @param onUpdate Optional callback to update React state when data changes.
+ * @returns Unsubscribe function to clean up the listener.
  * @author Aidan Rodriguez
  */
-export function listenForChange(uid : string) {
-    const unsub = onSnapshot(doc(db, "userInfo", uid), (doc) => {
-        const source = doc.metadata.hasPendingWrites ? "Local" : "Server";
-        console.log(source, " data: ", doc.data());
-        localStorage.setItem("userMoney", doc.data().money)
+export function listenForChange(uid: string, onUpdate?: ListenForChangeCallback): () => void {
+    return onSnapshot(doc(db, "userInfo", uid), (snap) => {
+        const data = snap.data();
+        if (!data) return;
 
-        var currDate = new Date(Date.now())
-        if ((doc.data().lastClaim.toDate().getDay() == currDate.getDay())) {
-            localStorage.setItem("hasDailyBonus", "false")
-            console.log("false")
-        }
-        else {
-            localStorage.setItem("hasDailyBonus", "true")
-            console.log("true")
-        }
+        const money = typeof data.money === 'number' ? data.money : Number(data.money) || 0;
+        localStorage.setItem("userMoney", String(money));
 
-    })
+        const currDate = new Date();
+        const hasDailyBonus = data.lastClaim
+            ? data.lastClaim.toDate().getDate() !== currDate.getDate() ||
+              data.lastClaim.toDate().getMonth() !== currDate.getMonth() ||
+              data.lastClaim.toDate().getFullYear() !== currDate.getFullYear()
+            : true;
+        localStorage.setItem("hasDailyBonus", hasDailyBonus ? "true" : "false");
+
+        onUpdate?.({ money, hasDailyBonus });
+    });
 }
 
 /**
