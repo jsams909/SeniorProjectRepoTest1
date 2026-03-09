@@ -1,4 +1,4 @@
-import type { LeaderboardEntry, Friend, SocialActivity } from './index';
+import type {LeaderboardEntry, Friend, SocialActivity, Bet} from './index';
 
 import {initializeApp} from "firebase/app";
 export const INITIAL_BALANCE = 10000;
@@ -17,7 +17,7 @@ export const FIREBASE_CONFIG = {
   measurementId: import.meta.env.VITE_MEASUREMENT_ID ?? "",
 }
 
-export const APP = initializeApp(FIREBASE_CONFIG)
+export var APP = initializeApp(FIREBASE_CONFIG)
 
 export const MOCK_LEADERBOARD: LeaderboardEntry[] = [
   { id: 'l1', name: 'CryptoWhale_99', avatar: 'CW', netWorth: 1450200, winRate: 72, rank: 1 },
