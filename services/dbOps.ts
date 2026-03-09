@@ -1,10 +1,10 @@
 import { setDoc, doc, getDoc, getDocs, getFirestore, onSnapshot, collection, Timestamp } from "firebase/firestore";
-import {APP} from "@/models/constants.ts";
-import {Bet} from "@/models";
+import {APP, db} from "@/models/constants.ts";
+import {Bet, LeaderboardEntry} from "@/models";
 import {getAuth} from "firebase/auth";
 
 
-const db = getFirestore(APP);
+
 export var currBets = new Array<Bet>;
 
 /**
@@ -147,9 +147,7 @@ export async function getBets(uid: string) : Promise<Bet[]> {
     var betList = new Array()
     const querySnapshot = await getDocs(collection(db, "bets"));
     querySnapshot.forEach((doc) => {
-        console.log("Found bet!")
         if (doc.data().userID == uid) {
-            console.log("bet is valid!")
             const validBet : Bet = {
                 id: doc.id,
                 marketId: doc.data().marketId,
@@ -173,4 +171,44 @@ export async function getBets(uid: string) : Promise<Bet[]> {
         }
     })
     return betList
+}
+
+export async function getTopUsers() : Promise<LeaderboardEntry[]> {
+    var topUserList = new Array();
+    const querySnapshot = await getDocs(collection(db, "userInfo"))
+    querySnapshot.forEach((doc) => {
+        const newTopUser : LeaderboardEntry = {
+            id: doc.id,
+            name: "John Cheese",
+            avatar: "JC",
+            netWorth: doc.data().money,
+            winRate: 50,
+            rank: 1,
+            isCurrentUser: false
+        }
+        topUserList.push(newTopUser)
+    })
+
+    const sortFunc = (field) => {
+        return (a, b) => {
+            let comp = 0;
+            if (a[field] > b[field]) {
+                comp = 1;
+            }
+            else {
+                comp = 1;
+            }
+
+            return comp * -1;
+        }
+    }
+
+    topUserList.sort((a, b) => b.netWorth - a.netWorth )
+    var rankCounter = 0;
+    for (const user of topUserList) {
+        rankCounter++
+        topUserList[rankCounter - 1].rank = rankCounter
+    }
+
+    return topUserList;
 }
