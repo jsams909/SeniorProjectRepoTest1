@@ -16,7 +16,7 @@ import {
   RefreshCw,
   AlertCircle,
   LogOut,
-  Settings,
+  User,
 } from 'lucide-react';
 import type { Market, MarketOption, Bet } from '../models';
 import { MarketCard } from '../components/MarketCard';
@@ -24,17 +24,19 @@ import { BetSlip } from '../components/BetSlip';
 import { Leaderboard } from '../components/Leaderboard';
 import { SocialView } from '../components/SocialView';
 import { SettingsView } from './SettingsView';
+import { ProfileView } from './ProfileView';
 import type { LeaderboardEntry, Friend, SocialActivity } from '../models';
 import { DAILY_BONUS_AMOUNT } from '../models/constants';
 import {getBets, getUserMoney, listenForChange} from "@/services/dbOps.ts";
 
-type DashboardViewType = 'MARKETS' | 'HISTORY' | 'LEADERBOARD' | 'SOCIAL' | 'SETTINGS';
+type DashboardViewType = 'MARKETS' | 'HISTORY' | 'LEADERBOARD' | 'SOCIAL' | 'PROFILE' | 'SETTINGS';
 
 function pathToView(pathname: string): DashboardViewType {
   // React Router v6 strips basename from pathname, so we get e.g. "/friends" not "/bethub/friends"
   const segment = (pathname.replace(/^\/bethub\/?/, '').replace(/^\//, '') || 'markets').split('/')[0] || 'markets';
   switch (segment) {
-    case 'profile': return 'SETTINGS';
+    case 'profile': return 'PROFILE';
+    case 'settings': return 'SETTINGS';
     case 'friends': return 'SOCIAL';
     case 'leaderboard': return 'LEADERBOARD';
     case 'history': return 'HISTORY';
@@ -133,6 +135,15 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
         return <Leaderboard entries={leaderboardEntries} />;
       case 'SOCIAL':
         return <SocialView friends={friends} activities={activity} onChallenge={onChallenge} />;
+      case 'PROFILE':
+        return (
+          <ProfileView
+            userInitials={userInitials}
+            userEmail={userEmail}
+            balance={balance}
+            activeBetsCount={props.activeBets.length}
+          />
+        );
       case 'SETTINGS':
         return <SettingsView userEmail={userEmail} />;
       case 'HISTORY':
@@ -295,8 +306,8 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
           <NavLink to="/history" title="History" className={({ isActive }) => `p-3 rounded-xl transition-all ${isActive ? 'bg-blue-600/10 text-blue-400' : 'text-slate-500 hover:bg-slate-800'}`}>
             <History size={24} />
           </NavLink>
-          <NavLink to="/profile" title="Settings" className={({ isActive }) => `p-3 rounded-xl transition-all ${isActive ? 'bg-blue-600/10 text-blue-400' : 'text-slate-500 hover:bg-slate-800'}`}>
-            <Settings size={24} />
+          <NavLink to="/profile" title="Profile" className={({ isActive }) => `p-3 rounded-xl transition-all ${isActive ? 'bg-blue-600/10 text-blue-400' : 'text-slate-500 hover:bg-slate-800'}`}>
+            <User size={24} />
           </NavLink>
         </div>
         <div className="hidden lg:mt-auto lg:block">
@@ -304,7 +315,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
             <NavLink
               to="/profile"
               className={({ isActive }) => `w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center border border-slate-600 hover:border-slate-500 hover:bg-slate-600 transition-all cursor-pointer ${isActive ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-slate-900' : ''}`}
-              title="Settings"
+              title="Profile"
             >
               <span className="text-xs font-bold">{userInitials}</span>
             </NavLink>
