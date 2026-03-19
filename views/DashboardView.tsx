@@ -26,7 +26,6 @@ import { SettingsView } from './SettingsView';
 import { ProfileView } from './ProfileView';
 import type { LeaderboardEntry, Friend, SocialActivity } from '../models';
 import { DAILY_BONUS_AMOUNT } from '../models/constants';
-import {getBets, getUserMoney, listenForChange} from "@/services/dbOps.ts";
 
 type DashboardViewType = 'MARKETS' | 'HISTORY' | 'LEADERBOARD' | 'SOCIAL' | 'PROFILE' | 'SETTINGS';
 
@@ -77,10 +76,8 @@ interface DashboardViewProps {
   onChallenge: (friend: Friend) => void;
 }
 
-var localBets = await getBets(localStorage.getItem("uid"))
-
 export const DashboardView: React.FC<DashboardViewProps> = (props) => {
-  var {
+  const {
     balance,
     betSelection,
     dailyBonusAvailable,
@@ -115,20 +112,13 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   const navigate = useNavigate();
   const view = pathToView(location.pathname);
 
+  useEffect(() => {
+    if (view === 'MARKETS') {
+      onRetryMarkets();
+    }
+  }, [view, onRetryMarkets]);
+
   const renderContent = () => {
-    useEffect(() => {
-
-
-      // Listen for changes going to the database. Also genuinely one of the most cancerous things I've ever written.
-      listenForChange(localStorage.getItem("uid"))
-      async function fetchData() {
-        localStorage.setItem("userMoney", String(await getUserMoney(localStorage.getItem("uid"))))
-      }
-      fetchData();
-
-
-    }, []);
-
     switch (view) {
       case 'LEADERBOARD':
         return <Leaderboard entries={leaderboardEntries} />;
@@ -152,8 +142,8 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
               <History className="text-blue-400" size={24} /> Betting History
             </h2>
             <div className="space-y-4">
-              {/*props.activeBets.length*/ localBets.length > 0 ? (
-                /*props.activeBets*/ localBets.map(bet => (
+              {props.activeBets.length > 0 ? (
+                props.activeBets.map(bet => (
                   <div key={bet.id} className="glass-card rounded-2xl p-6 border-slate-800 hover:border-slate-700 transition-all">
                     <div className="flex justify-between items-start mb-4">
                       <div>
