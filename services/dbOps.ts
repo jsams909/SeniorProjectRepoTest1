@@ -1,11 +1,34 @@
-import { setDoc, doc, getDoc, getDocs, getFirestore, onSnapshot, collection, Timestamp } from "firebase/firestore";
-import {APP, db} from "@/models/constants.ts";
-import {Bet, LeaderboardEntry} from "@/models";
-import {getAuth} from "firebase/auth";
-
-
+import { setDoc, doc, getDoc, getDocs, onSnapshot, collection, Timestamp } from "firebase/firestore";
+import { db } from "@/models/constants.ts";
+import { Bet, LeaderboardEntry } from "@/models";
 
 export var currBets = new Array<Bet>;
+
+export async function setUserName(uid : string, name : string) {
+    await setDoc(doc(db, "userInfo", uid), {
+        name: name
+    }, { merge: true })
+}
+
+export async function resetRatio(uid: string) {
+    await setDoc(doc(db, "userInfo", uid), {
+        wins: 0,
+        losses: 0
+    }, { merge: true })
+}
+
+export async function getUserRatio(uid: string) : Promise<number[]> {
+    const documentReference = doc(db, "userInfo", uid);
+    const documentSnapshot = await getDoc(documentReference);
+
+    var winsAndLosses = [0, 0]
+    if (documentSnapshot.exists()) {
+        const data = documentSnapshot.data();
+        winsAndLosses[0] = data["wins"] as number
+        winsAndLosses[1] = data["losses"] as number
+        return winsAndLosses
+    }
+}
 
 /**
  * Returns the amount of money a user has in Firestore.
@@ -175,14 +198,17 @@ export async function getBets(uid: string) : Promise<Bet[]> {
 
 export async function getTopUsers() : Promise<LeaderboardEntry[]> {
     var topUserList = new Array();
+
+
     const querySnapshot = await getDocs(collection(db, "userInfo"))
-    querySnapshot.forEach((doc) => {
+    querySnapshot.forEach(async (doc) => {
+        const ratio = doc.data().wins / doc.data().losses
         const newTopUser : LeaderboardEntry = {
             id: doc.id,
-            name: "John Cheese",
-            avatar: "JC",
+            name: doc.data().name,
+            avatar: "",
             netWorth: doc.data().money,
-            winRate: 50,
+            winRate: ratio,
             rank: 1,
             isCurrentUser: false
         }
