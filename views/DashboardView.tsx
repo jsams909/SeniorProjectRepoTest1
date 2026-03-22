@@ -1,5 +1,4 @@
-import React, {useEffect} from 'react';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, NavLink } from 'react-router-dom';
 import {
   Trophy,
@@ -28,18 +27,29 @@ import type { LeaderboardEntry, Friend, SocialActivity } from '../models';
 import { DAILY_BONUS_AMOUNT } from '../models/constants';
 import {getBets, getUserMoney, listenForChange} from "@/services/dbOps.ts";
 
-type DashboardViewType = 'MARKETS' | 'HISTORY' | 'LEADERBOARD' | 'SOCIAL' | 'SETTINGS';
+type DashboardViewType = 'HOME' | 'MARKETS' | 'HISTORY' | 'LEADERBOARD' | 'SOCIAL' | 'SETTINGS';
 
 function pathToView(pathname: string): DashboardViewType {
   // React Router v6 strips basename from pathname, so we get e.g. "/friends" not "/bethub/friends"
-  const segment = (pathname.replace(/^\/bethub\/?/, '').replace(/^\//, '') || 'markets').split('/')[0] || 'markets';
+  const normalized = pathname.replace(/^\/bethub\/?/, '').replace(/^\//, '');
+  const segment = normalized.split('/').filter(Boolean)[0] ?? '';
+
   switch (segment) {
-    case 'profile': return 'SETTINGS';
-    case 'friends': return 'SOCIAL';
-    case 'leaderboard': return 'LEADERBOARD';
-    case 'history': return 'HISTORY';
+    case '':
+      return 'HOME';
+    case 'bet':
     case 'markets':
-    default: return 'MARKETS';
+      return 'MARKETS';
+    case 'profile':
+      return 'SETTINGS';
+    case 'friends':
+      return 'SOCIAL';
+    case 'leaderboard':
+      return 'LEADERBOARD';
+    case 'history':
+      return 'HISTORY';
+    default:
+      return 'HOME';
   }
 }
 
@@ -76,8 +86,6 @@ interface DashboardViewProps {
   onChallenge: (friend: Friend) => void;
 }
 
-var localBets = await getBets(localStorage.getItem("uid"))
-
 export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   var {
     balance,
@@ -113,22 +121,58 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   const location = useLocation();
   const navigate = useNavigate();
   const view = pathToView(location.pathname);
+  const [localBets, setLocalBets] = useState<Bet[]>([]);
+
+  useEffect(() => {
+    const uid = localStorage.getItem('uid');
+    if (!uid) return;
+
+    const unsubscribe = listenForChange(uid);
+
+    (async () => {
+      try {
+        const money = await getUserMoney(uid);
+        if (money != null) localStorage.setItem('userMoney', String(money));
+      } catch {
+        /* ignore */
+      }
+      try {
+        const bets = await getBets(uid);
+        setLocalBets(bets);
+      } catch {
+        /* ignore */
+      }
+    })();
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   const renderContent = () => {
-    useEffect(() => {
-
-
-      // Listen for changes going to the database. Also genuinely one of the most cancerous things I've ever written.
-      listenForChange(localStorage.getItem("uid"))
-      async function fetchData() {
-        localStorage.setItem("userMoney", String(await getUserMoney(localStorage.getItem("uid"))))
-      }
-      fetchData();
-
-
-    }, []);
-
     switch (view) {
+      case 'HOME':
+        return (
+          <div className="animate-in fade-in duration-500 max-w-2xl">
+            <div className="glass-card rounded-3xl p-10 lg:p-12 border-slate-800 text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 shadow-lg shadow-blue-600/30 mb-6">
+                <Zap className="text-white" size={32} />
+              </div>
+              <h2 className="text-3xl font-black text-white tracking-tight mb-3">Welcome to BetHub</h2>
+              <p className="text-slate-400 mb-8 leading-relaxed">
+                Simulated sports betting with fake currency. Browse live odds, place picks, and climb the leaderboard — no real money at risk.
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate('/bet')}
+                className="inline-flex items-center gap-2 px-8 py-3.5 rounded-2xl font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/25 transition-all active:scale-[0.98]"
+              >
+                <TrendingUp size={20} />
+                Go to live betting
+              </button>
+            </div>
+          </div>
+        );
       case 'LEADERBOARD':
         return <Leaderboard entries={leaderboardEntries} />;
       case 'SOCIAL':
@@ -175,7 +219,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
                 <div className="py-20 text-center glass-card rounded-2xl border-dashed">
                   <Gamepad2 className="mx-auto text-slate-700 mb-4" size={48} />
                   <h3 className="text-xl font-bold text-slate-500">No bets placed yet</h3>
-                  <button onClick={() => navigate('/')} className="mt-4 text-blue-400 hover:text-blue-300 font-bold">
+                  <button onClick={() => navigate('/bet')} className="mt-4 text-blue-400 hover:text-blue-300 font-bold">
                     Start betting now &rarr;
                   </button>
                 </div>
@@ -279,11 +323,16 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
         </div>
       )}
       <nav className="w-full lg:w-20 bg-slate-900 border-b lg:border-r border-slate-800 flex flex-row lg:flex-col items-center py-4 px-2 lg:py-8 sticky top-0 z-40 lg:h-screen justify-between lg:justify-start lg:gap-8">
-        <NavLink to="/" className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/40 cursor-pointer [&.active]:ring-2 [&.active]:ring-blue-400 [&.active]:ring-offset-2 [&.active]:ring-offset-slate-900">
+        <NavLink
+          to="/"
+          end
+          title="Home"
+          className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/40 cursor-pointer [&.active]:ring-2 [&.active]:ring-blue-400 [&.active]:ring-offset-2 [&.active]:ring-offset-slate-900"
+        >
           <Zap className="text-white" size={24} />
         </NavLink>
         <div className="flex lg:flex-col gap-4">
-          <NavLink to="/" end title="Markets" className={({ isActive }) => `p-3 rounded-xl transition-all ${isActive ? 'bg-blue-600/10 text-blue-400' : 'text-slate-500 hover:bg-slate-800'}`}>
+          <NavLink to="/bet" title="Live betting" className={({ isActive }) => `p-3 rounded-xl transition-all ${isActive ? 'bg-blue-600/10 text-blue-400' : 'text-slate-500 hover:bg-slate-800'}`}>
             <TrendingUp size={24} />
           </NavLink>
           <NavLink to="/leaderboard" title="Leaderboard" className={({ isActive }) => `p-3 rounded-xl transition-all ${isActive ? 'bg-blue-600/10 text-blue-400' : 'text-slate-500 hover:bg-slate-800'}`}>
