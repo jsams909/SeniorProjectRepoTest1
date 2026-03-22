@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react';
-import type { Friend } from '../models';
+import { useState, useCallback, useEffect } from 'react';
+import type { Friend, LeaderboardEntry } from '../models';
 import { useBettingViewModel } from './useBettingViewModel';
 import { useMarketsViewModel } from './useMarketsViewModel';
-import { MOCK_LEADERBOARD, MOCK_FRIENDS, MOCK_ACTIVITY } from '../models/constants';
+import { MOCK_FRIENDS, MOCK_ACTIVITY } from '../models/constants';
+import { getTopUsers } from '../services/dbOps';
 
 /**
  * Composes betting + markets + auth for DashboardView.
@@ -20,6 +21,25 @@ export function useDashboardViewModel(auth: AuthViewModel) {
   const markets = useMarketsViewModel();
 
   const [view, setView] = useState<DashboardView>('MARKETS');
+  const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getTopUsers()
+      .then((rows) => {
+        if (cancelled) return;
+        const uid = typeof localStorage !== 'undefined' ? localStorage.getItem('uid') : null;
+        setLeaderboardEntries(
+          rows.map((r) => ({ ...r, isCurrentUser: uid != null && r.id === uid }))
+        );
+      })
+      .catch((err) => {
+        console.error('Failed to load leaderboard', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleChallenge = useCallback((friend: Friend) => {
     alert(`Challenge request sent to ${friend.name}! Head-to-head competition initiated.`);
@@ -32,7 +52,7 @@ export function useDashboardViewModel(auth: AuthViewModel) {
     view,
     setView,
     handleChallenge,
-    leaderboardEntries: MOCK_LEADERBOARD,
+    leaderboardEntries,
     friends: MOCK_FRIENDS,
     activity: MOCK_ACTIVITY,
   };

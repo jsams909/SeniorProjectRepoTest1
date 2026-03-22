@@ -34,7 +34,20 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({ entries }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/50">
-            {entries.map((entry) => (
+            {entries.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-6 py-16 text-center">
+                  <Trophy className="mx-auto text-slate-600 mb-3" size={40} />
+                  <p className="text-slate-300 font-bold text-lg mb-1">No players on the board yet</p>
+                  <p className="text-slate-500 text-sm max-w-md mx-auto">
+                    Rankings come from your Firestore <code className="text-slate-400">userInfo</code> collection.
+                    Create an account (or add documents with <code className="text-slate-400">name</code> and{' '}
+                    <code className="text-slate-400">money</code>) to see users here.
+                  </p>
+                </td>
+              </tr>
+            ) : (
+            entries.map((entry) => (
               <tr 
                 key={entry.id} 
                 className={`hover:bg-blue-500/5 transition-colors ${entry.isCurrentUser ? 'bg-blue-600/10' : ''}`}
@@ -77,7 +90,8 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({ entries }) => {
                   <TrendingUp className="inline text-green-400" size={16} />
                 </td>
               </tr>
-            ))}
+            ))
+            )}
           </tbody>
         </table>
       </div>

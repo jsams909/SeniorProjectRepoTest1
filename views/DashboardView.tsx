@@ -22,6 +22,7 @@ import { MarketCard } from '../components/MarketCard';
 import { BetSlip } from '../components/BetSlip';
 import { Leaderboard } from '../components/Leaderboard';
 import { SocialView } from '../components/SocialView';
+import { HomeLanding } from '../components/HomeLanding';
 import { SettingsView } from './SettingsView';
 import type { LeaderboardEntry, Friend, SocialActivity } from '../models';
 import { DAILY_BONUS_AMOUNT } from '../models/constants';
@@ -153,24 +154,8 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
     switch (view) {
       case 'HOME':
         return (
-          <div className="animate-in fade-in duration-500 max-w-2xl">
-            <div className="glass-card rounded-3xl p-10 lg:p-12 border-slate-800 text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 shadow-lg shadow-blue-600/30 mb-6">
-                <Zap className="text-white" size={32} />
-              </div>
-              <h2 className="text-3xl font-black text-white tracking-tight mb-3">Welcome to BetHub</h2>
-              <p className="text-slate-400 mb-8 leading-relaxed">
-                Simulated sports betting with fake currency. Browse live odds, place picks, and climb the leaderboard — no real money at risk.
-              </p>
-              <button
-                type="button"
-                onClick={() => navigate('/bet')}
-                className="inline-flex items-center gap-2 px-8 py-3.5 rounded-2xl font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/25 transition-all active:scale-[0.98]"
-              >
-                <TrendingUp size={20} />
-                Go to live betting
-              </button>
-            </div>
+          <div className="animate-in fade-in duration-500 flex min-h-0 w-full flex-1 flex-col">
+            <HomeLanding dailyBonusAvailable={dailyBonusAvailable} onDailyBonus={onDailyBonus} onLogout={onLogout} />
           </div>
         );
       case 'LEADERBOARD':
@@ -316,13 +301,13 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-100 flex flex-col lg:flex-row">
+    <div className="min-h-screen bg-gradient-to-br from-slate-800 via-[#0f172a] to-slate-950 text-slate-100 flex flex-col lg:flex-row">
       {bonusMessage && (
         <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-sm font-medium text-green-400 shadow-lg animate-in fade-in slide-in-from-top-2">
           {bonusMessage}
         </div>
       )}
-      <nav className="w-full lg:w-20 bg-slate-900 border-b lg:border-r border-slate-800 flex flex-row lg:flex-col items-center py-4 px-2 lg:py-8 sticky top-0 z-40 lg:h-screen justify-between lg:justify-start lg:gap-8">
+      <nav className="w-full lg:w-20 bg-gradient-to-b from-slate-900 to-slate-950 border-b lg:border-r border-slate-800 flex flex-row lg:flex-col items-center py-4 px-2 lg:py-8 sticky top-0 z-40 lg:h-screen justify-between lg:justify-start lg:gap-8">
         <NavLink
           to="/"
           end
@@ -364,36 +349,40 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
         </div>
       </nav>
 
-      <main className="flex-1 overflow-y-auto custom-scrollbar p-4 lg:p-8">
-        <header className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6">
-          <div>
-            <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
-              BetHub <span className="text-xs font-normal text-slate-500 bg-slate-800 px-2 py-1 rounded">LIVE</span>
-            </h1>
-            <p className="text-slate-400 mt-1">Simulated betting with fake currency.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="glass-card flex items-center gap-3 px-6 py-3 rounded-2xl border-green-500/20 shadow-lg shadow-green-900/10">
-              <div className="w-10 h-10 bg-green-500/10 rounded-full flex items-center justify-center">
-                <WalletIcon className="text-green-400" size={20} />
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-500 uppercase">Wallet Balance</p>
-                <p className="text-xl font-black text-green-400">${localStorage.getItem("userMoney")}</p>
-              </div>
+      <main
+        className={`flex-1 overflow-y-auto custom-scrollbar min-h-0 ${view === 'HOME' ? 'p-0 flex h-full min-h-0 flex-col' : 'p-4 lg:p-8'}`}
+      >
+        {view !== 'HOME' && (
+          <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+            <div>
+              <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
+                BetHub <span className="text-xs font-normal text-slate-500 bg-slate-800 px-2 py-1 rounded">LIVE</span>
+              </h1>
+              <p className="text-slate-400 mt-1">Simulated betting with fake currency.</p>
             </div>
-            <button
-              onClick={onDailyBonus}
-              disabled={!(dailyBonusAvailable)}
-              className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all active:scale-95 ${dailyBonusAvailable ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
-            >
-              <Trophy size={18} /> {dailyBonusAvailable ? `Daily Bonus (+$${DAILY_BONUS_AMOUNT})` : 'Claimed Today'}
-            </button>
-            <button onClick={onLogout} className="lg:hidden px-4 py-2 rounded-xl text-sm text-slate-500 hover:text-slate-300 hover:bg-slate-800 flex items-center gap-2">
-              <LogOut size={16} /> Log out
-            </button>
-          </div>
-        </header>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="glass-card flex items-center gap-3 px-6 py-3 rounded-2xl border-green-500/20 shadow-lg shadow-green-900/10">
+                <div className="w-10 h-10 bg-green-500/10 rounded-full flex items-center justify-center">
+                  <WalletIcon className="text-green-400" size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">Wallet Balance</p>
+                  <p className="text-xl font-black text-green-400">${localStorage.getItem('userMoney')}</p>
+                </div>
+              </div>
+              <button
+                onClick={onDailyBonus}
+                disabled={!dailyBonusAvailable}
+                className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all active:scale-95 ${dailyBonusAvailable ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
+              >
+                <Trophy size={18} /> {dailyBonusAvailable ? `Daily Bonus (+$${DAILY_BONUS_AMOUNT})` : 'Claimed Today'}
+              </button>
+              <button onClick={onLogout} className="lg:hidden px-4 py-2 rounded-xl text-sm text-slate-500 hover:text-slate-300 hover:bg-slate-800 flex items-center gap-2">
+                <LogOut size={16} /> Log out
+              </button>
+            </div>
+          </header>
+        )}
         {renderContent()}
       </main>
 

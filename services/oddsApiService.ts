@@ -138,31 +138,59 @@ const POPULAR_SPORTS = [
   'soccer_uefa_champions_league',
 ];
 
+/** Space out Odds API calls — parallel requests hit 429 (Too Many Requests) on free / low tiers. */
+const MS_BETWEEN_ODDS_REQUESTS = 1100;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchOddsForSport(sportKey: string, region: string): Promise<OddsApiEvent[]> {
   const url = sportKey === 'upcoming'
     ? `${API_BASE}/odds?regions=${region}&markets=h2h&oddsFormat=decimal`
     : `${API_BASE}/odds/${sportKey}?regions=${region}&markets=h2h&oddsFormat=decimal`;
-  const res = await fetch(url);
+
+  const load = async (): Promise<Response> => fetch(url);
+  let res = await load();
+  if (res.status === 429) {
+    await delay(2500);
+    res = await load();
+  }
   if (!res.ok) return [];
   return res.json();
 }
 
+let upcomingOddsInFlight: Promise<Market[]> | null = null;
+
 export async function fetchUpcomingOdds(region = 'us'): Promise<Market[]> {
-  const results = await Promise.allSettled(
-    POPULAR_SPORTS.map((sport) => fetchOddsForSport(sport, region))
-  );
-  const seen = new Set<string>();
-  const markets: Market[] = [];
-  for (const result of results) {
-    if (result.status !== 'fulfilled') continue;
-    const data: OddsApiEvent[] = result.value;
-    for (const event of data) {
-      if (seen.has(event.id)) continue;
-      seen.add(event.id);
-      const market = transformEventToMarket(event);
-      if (market) markets.push(market);
+  if (upcomingOddsInFlight) return upcomingOddsInFlight;
+
+  upcomingOddsInFlight = (async () => {
+    const seen = new Set<string>();
+    const markets: Market[] = [];
+
+    for (let i = 0; i < POPULAR_SPORTS.length; i++) {
+      if (i > 0) await delay(MS_BETWEEN_ODDS_REQUESTS);
+      try {
+        const data = await fetchOddsForSport(POPULAR_SPORTS[i], region);
+        for (const event of data) {
+          if (seen.has(event.id)) continue;
+          seen.add(event.id);
+          const market = transformEventToMarket(event);
+          if (market) markets.push(market);
+        }
+      } catch {
+        /* skip failed sport batch */
+      }
     }
+
+    return markets;
+  })();
+
+  try {
+    return await upcomingOddsInFlight;
+  } finally {
+    upcomingOddsInFlight = null;
   }
-  return markets;
 }
 
