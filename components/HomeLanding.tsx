@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Search, Trophy, Users, History, Zap, Gift, LogOut } from 'lucide-react';
+import { Search, Trophy, Users, History, Gift, LogOut } from 'lucide-react';
 
 /** Served from `public/home/` (respects Vite `base`, e.g. /bethub/) */
 const homeImg = (file: string) => `${import.meta.env.BASE_URL}home/${file}`;
@@ -69,7 +69,7 @@ export const HomeLanding: React.FC<HomeLandingProps> = ({ dailyBonusAvailable, o
   return (
     <div className="flex flex-col min-h-0 h-full w-full bg-transparent">
       <header className="shrink-0 w-full border-b border-white/10 bg-[#0c3044] text-white">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 px-4 sm:px-6 lg:px-10 py-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5 px-4 sm:px-6 lg:px-10 py-5 sm:py-6">
           <nav className="flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-2 text-[11px] font-bold uppercase tracking-[0.12em]">
             <NavLink to="/bet" className="hover:text-amber-200/90 transition-colors">
               Live markets
@@ -81,11 +81,6 @@ export const HomeLanding: React.FC<HomeLandingProps> = ({ dailyBonusAvailable, o
               Social
             </NavLink>
           </nav>
-          <div className="flex justify-center order-first lg:order-none">
-            <div className="flex h-11 w-11 items-center justify-center rounded-sm bg-white shadow-md shadow-black/20">
-              <Zap className="text-[#0c3044]" size={22} strokeWidth={2.5} aria-hidden />
-            </div>
-          </div>
           <nav className="flex flex-wrap items-center justify-center lg:justify-end gap-x-6 gap-y-2 text-[11px] font-bold uppercase tracking-[0.12em]">
             <NavLink to="/history" className="hover:text-amber-200/90 transition-colors">
               History

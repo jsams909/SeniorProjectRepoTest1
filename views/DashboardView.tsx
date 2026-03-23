@@ -161,25 +161,50 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
     return `${words[0][0] ?? ''}${words[1][0] ?? ''}`.toUpperCase();
   };
   
+  /**
+   * MLB / NHL: Simple Icons via jsDelivr (stable SVG marks).
+   * Soccer: classic association-football ball artwork (distinct from generic “football” clip).
+   */
   const SPORT_LOGOS: Record<string, string> = {
     Football: 'https://upload.wikimedia.org/wikipedia/en/a/a2/National_Football_League_logo.svg',
     Basketball: 'https://upload.wikimedia.org/wikipedia/en/0/03/National_Basketball_Association_logo.svg',
-    Baseball: 'https://upload.wikimedia.org/wikipedia/en/a/a6/Major_League_Baseball_logo.svg',
-    Hockey: 'https://upload.wikimedia.org/wikipedia/commons/3/3a/National_Hockey_League_shield.svg',
-    Soccer: 'https://upload.wikimedia.org/wikipedia/commons/d/d3/Football_%28soccer_ball%29.svg',
+    Baseball: 'https://cdn.jsdelivr.net/npm/simple-icons@11.14.0/icons/mlb.svg',
+    Hockey: 'https://cdn.jsdelivr.net/npm/simple-icons@11.14.0/icons/nhl.svg',
+    Soccer:
+      'https://upload.wikimedia.org/wikipedia/commons/8/8d/Association_football_ball_01.svg',
+  };
+
+  const SPORT_ICON_EMOJI: Record<string, string> = {
+    Baseball: '⚾',
+    Hockey: '🏒',
+    Soccer: '⚽',
+    Football: '🏈',
+    Basketball: '🏀',
+  };
+
+  const normalizeSportKey = (sport: string) => {
+    const s = sport.trim();
+    return Object.keys(SPORT_LOGOS).find((k) => k.toLowerCase() === s.toLowerCase()) ?? s;
   };
 
   const renderSportIcon = (sport: string, className = 'h-5 w-5') => {
-    const src = SPORT_LOGOS[sport];
+    const key = normalizeSportKey(sport);
+    const emoji = SPORT_ICON_EMOJI[key];
+    const src = SPORT_LOGOS[key];
     if (!src) {
-      return <CircleDot size={14} className="text-slate-300" />;
+      return emoji ? (
+        <span className={`inline-flex items-center justify-center ${className} text-[1.1rem] leading-none`}>{emoji}</span>
+      ) : (
+        <CircleDot size={14} className="text-slate-300" />
+      );
     }
+    const lightMonoLogo = key === 'Baseball' || key === 'Hockey';
     return (
       <span className="inline-flex items-center justify-center">
         <img
           src={src}
-          alt={`${sport} logo`}
-          className={className}
+          alt={`${key} logo`}
+          className={`${className} object-contain ${lightMonoLogo ? 'brightness-0 invert opacity-90' : ''}`}
           loading="lazy"
           referrerPolicy="no-referrer"
           onError={(e) => {
@@ -188,8 +213,8 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
             if (next) next.style.display = 'inline-flex';
           }}
         />
-        <span className="hidden items-center justify-center text-slate-300">
-          <CircleDot size={14} />
+        <span className="hidden items-center justify-center text-[1.1rem] leading-none" aria-hidden>
+          {emoji ?? '·'}
         </span>
       </span>
     );
@@ -476,13 +501,6 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
                             {tab}
                           </button>
                         ))}
-                      <button
-                        onClick={() => onSportFilter('ALL')}
-                        className="shrink-0 inline-flex items-center justify-center rounded-full border border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200 p-2"
-                        title="View all sports"
-                      >
-                        <ChevronRight size={14} />
-                      </button>
                     </div>
                     <button className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-slate-300 hover:text-blue-300 transition-colors">
                       View All Games <ChevronRight size={14} />
@@ -606,13 +624,13 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-800 via-[#0f172a] to-slate-950 text-slate-100 flex flex-col lg:flex-row">
+    <div className="h-screen max-h-screen min-h-0 overflow-hidden bg-gradient-to-br from-slate-800 via-[#0f172a] to-slate-950 text-slate-100 flex flex-col lg:flex-row">
       {bonusMessage && (
         <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-sm font-medium text-green-400 shadow-lg animate-in fade-in slide-in-from-top-2">
           {bonusMessage}
         </div>
       )}
-      <nav className="w-full lg:w-20 bg-gradient-to-b from-slate-900 to-slate-950 border-b lg:border-r border-slate-800 flex flex-row lg:flex-col items-center py-4 px-2 lg:py-8 sticky top-0 z-40 lg:h-screen justify-between lg:justify-start lg:gap-8">
+      <nav className="w-full shrink-0 lg:w-20 bg-gradient-to-b from-slate-900 to-slate-950 border-b lg:border-r border-slate-800 flex flex-row lg:flex-col items-center py-4 px-2 lg:py-8 z-40 lg:h-full lg:min-h-0 justify-between lg:justify-start lg:gap-8">
         <NavLink
           to="/"
           end
@@ -655,7 +673,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
       </nav>
 
       <main
-        className={`flex-1 overflow-y-auto custom-scrollbar min-h-0 ${view === 'HOME' ? 'p-0 flex h-full min-h-0 flex-col' : 'p-4 lg:p-8'}`}
+        className={`flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain custom-scrollbar ${view === 'HOME' ? 'p-0 flex flex-col' : 'p-4 lg:p-8'}`}
       >
         {view !== 'HOME' && (
           <header className="mb-7">
@@ -703,6 +721,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
           parlaySelections={parlaySelections}
           onClear={onClearBet}
           onPlaceBet={onPlaceBet}
+          onSelectBet={onSelectBet}
           balance={balance}
         />
       )}
