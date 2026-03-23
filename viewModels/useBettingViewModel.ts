@@ -49,7 +49,7 @@ export function useBettingViewModel() {
       setBalance(money);
       setDailyBonusAvailable(hasDailyBonus);
     });
-  }, [userEmail]);
+  }, [localStorage.getItem("userEmail")]);
 
   const handlePlaceBet = useCallback((stake: number) => {
     if (!betSelection) return;

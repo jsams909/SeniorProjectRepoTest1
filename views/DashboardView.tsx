@@ -22,6 +22,7 @@ import {
   Compass,
   Sparkles,
   CircleDot,
+  User,
 } from 'lucide-react';
 import type { Market, MarketOption, Bet } from '../models';
 import { BetSlip } from '../components/BetSlip';
@@ -32,6 +33,7 @@ import { SettingsView } from './SettingsView';
 import { ProfileView } from './ProfileView';
 import type { LeaderboardEntry, Friend, SocialActivity } from '../models';
 import { DAILY_BONUS_AMOUNT } from '../models/constants';
+import {getBets, getUserMoney, listenForChange} from "@/services/dbOps.ts";
 
 type DashboardViewType = 'HOME' | 'MARKETS' | 'HISTORY' | 'LEADERBOARD' | 'SOCIAL' | 'SETTINGS';
 
@@ -269,6 +271,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
         return <Leaderboard entries={leaderboardEntries} />;
       case 'SOCIAL':
         return <SocialView friends={friends} activities={activity} onChallenge={onChallenge} />;
+        /*
       case 'PROFILE':
         return (
           <ProfileView
@@ -277,7 +280,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
             balance={balance}
             activeBetsCount={props.activeBets.length}
           />
-        );
+        );*/
       case 'SETTINGS':
         return <SettingsView userEmail={userEmail} />;
       case 'HISTORY':
