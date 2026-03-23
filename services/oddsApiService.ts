@@ -94,21 +94,58 @@ function transformEventToMarket(event: OddsApiEvent): Market | null {
 
   const h2hMarket = bookmaker.markets.find(m => m.key === 'h2h' || m.key === 'outrights');
   if (!h2hMarket?.outcomes?.length) return null;
+  const spreadsMarket = bookmaker.markets.find(m => m.key === 'spreads');
+  const totalsMarket = bookmaker.markets.find(m => m.key === 'totals');
 
   const title = event.home_team && event.away_team
     ? `${event.away_team} @ ${event.home_team}`
     : event.home_team || event.away_team || 'Event';
   const subtitle = event.sport_title || sportKeyToLeague(event.sport_key);
 
-  const options: MarketOption[] = h2hMarket.outcomes.map((outcome, i) => {
-    let odds = outcome.price;
-    if (odds > 100 || odds < -100) {
-      odds = americanToDecimal(odds);
+  const normalizeOdds = (price: number) => {
+    if (price > 100 || price < -100) {
+      return americanToDecimal(price);
     }
+    return price;
+  };
+
+  const h2hOptions: MarketOption[] = h2hMarket.outcomes.map((outcome, i) => {
+    const odds = normalizeOdds(outcome.price);
     return {
-      id: `o-${event.id}-${i}`,
+      id: `o-${event.id}-h2h-${i}`,
       label: outcome.name,
       odds: Math.round(odds * 100) / 100,
+      marketKey: h2hMarket.key === 'outrights' ? 'outrights' : 'h2h',
+    };
+  });
+
+  const spreadOptions: MarketOption[] = (spreadsMarket?.outcomes ?? []).map((outcome, i) => {
+    const odds = normalizeOdds(outcome.price);
+    const point = typeof outcome.point === 'number' ? outcome.point : 0;
+    const spreadLabel = point > 0 ? `+${point}` : `${point}`;
+    return {
+      id: `o-${event.id}-spread-${i}`,
+      label: `${outcome.name} ${spreadLabel}`,
+      odds: Math.round(odds * 100) / 100,
+      marketKey: 'spreads',
+    };
+  });
+
+  const totalOptions: MarketOption[] = (totalsMarket?.outcomes ?? []).map((outcome, i) => {
+    const odds = normalizeOdds(outcome.price);
+    const point = typeof outcome.point === 'number' ? outcome.point : 0;
+    return {
+      id: `o-${event.id}-total-${i}`,
+      label: `${outcome.name} ${point}`,
+      odds: Math.round(odds * 100) / 100,
+      marketKey: 'totals',
+    };
+  });
+
+  const options: MarketOption[] = [...h2hOptions, ...spreadOptions, ...totalOptions].map((option, i) => {
+    return {
+      ...option,
+      id: option.id || `o-${event.id}-${i}`,
     };
   });
 
@@ -147,8 +184,8 @@ function delay(ms: number): Promise<void> {
 
 async function fetchOddsForSport(sportKey: string, region: string): Promise<OddsApiEvent[]> {
   const url = sportKey === 'upcoming'
-    ? `${API_BASE}/odds?regions=${region}&markets=h2h&oddsFormat=decimal`
-    : `${API_BASE}/odds/${sportKey}?regions=${region}&markets=h2h&oddsFormat=decimal`;
+    ? `${API_BASE}/odds?regions=${region}&markets=h2h,spreads,totals&oddsFormat=decimal`
+    : `${API_BASE}/odds/${sportKey}?regions=${region}&markets=h2h,spreads,totals&oddsFormat=decimal`;
 
   const load = async (): Promise<Response> => fetch(url);
   let res = await load();

@@ -19,6 +19,7 @@ export interface MarketOption {
   id: string;
   label: string;
   odds: number;
+  marketKey?: 'h2h' | 'spreads' | 'totals' | 'outrights';
 }
 
 export interface Bet {
