@@ -226,6 +226,8 @@ export async function addBet(uid: string, bet: Bet) {
         marketTitle: bet.marketTitle,
         optionLabel: bet.optionLabel,
         betType: bet.betType ?? "single",
+        parlayLegs: bet.parlayLegs ?? [],
+        legCount: bet.parlayLegs?.length ?? (bet.betType === "parlay" ? 0 : 1),
         stake: bet.stake,
         odds: bet.odds,
         potentialPayout: bet.potentialPayout,
@@ -270,6 +272,8 @@ export async function placeSingleBet(uid: string, bet: Bet): Promise<PlaceSingle
                 marketTitle: bet.marketTitle,
                 optionLabel: bet.optionLabel,
                 betType: bet.betType ?? "single",
+                parlayLegs: bet.parlayLegs ?? [],
+                legCount: bet.parlayLegs?.length ?? (bet.betType === "parlay" ? 0 : 1),
                 stake: bet.stake,
                 odds: bet.odds,
                 potentialPayout: bet.potentialPayout,
@@ -311,7 +315,16 @@ export async function getBets(uid: string) : Promise<Bet[]> {
                 stake: doc.data().stake,
                 odds: doc.data().odds,
                 potentialPayout: doc.data().potentialPayout,
-                placedAt: doc.data().placedAt.toDate()
+                placedAt: doc.data().placedAt.toDate(),
+                parlayLegs: Array.isArray(doc.data().parlayLegs)
+                    ? doc.data().parlayLegs.map((leg: any) => ({
+                        marketId: String(leg.marketId ?? ""),
+                        marketTitle: String(leg.marketTitle ?? ""),
+                        optionId: String(leg.optionId ?? ""),
+                        optionLabel: String(leg.optionLabel ?? ""),
+                        odds: Number(leg.odds) || 0,
+                    }))
+                    : undefined,
             }
             try {
 

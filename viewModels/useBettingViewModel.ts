@@ -75,6 +75,15 @@ export function useBettingViewModel() {
       ? parlaySelections.map((s) => s.market.title).join(' | ')
       : betSelection.market.title;
     const resolvedOptionLabel = isParlayBet ? `${parlayCount}-Leg Parlay` : betSelection.option.label;
+    const parlayLegs = isParlayBet
+      ? parlaySelections.map((s) => ({
+          marketId: s.market.id,
+          marketTitle: s.market.title,
+          optionId: s.option.id,
+          optionLabel: s.option.label,
+          odds: s.option.odds,
+        }))
+      : undefined;
 
     const newBet: Bet = {
       id: Math.random().toString(36).substr(2, 9),
@@ -85,7 +94,8 @@ export function useBettingViewModel() {
       stake,
       odds: resolvedOdds,
       potentialPayout: stake * resolvedOdds,
-      placedAt: new Date()
+      placedAt: new Date(),
+      parlayLegs,
     };
 
     setIsPlacingBet(true);

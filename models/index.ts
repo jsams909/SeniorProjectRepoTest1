@@ -32,6 +32,13 @@ export interface Bet {
   odds: number;
   potentialPayout: number;
   placedAt: Date;
+  parlayLegs?: Array<{
+    marketId: string;
+    marketTitle: string;
+    optionId: string;
+    optionLabel: string;
+    odds: number;
+  }>;
 }
 
 export interface LeaderboardEntry {

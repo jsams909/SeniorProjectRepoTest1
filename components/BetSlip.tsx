@@ -26,6 +26,7 @@ export const BetSlip: React.FC<BetSlipProps> = ({
 }) => {
   const [stakeInput, setStakeInput] = useState<string>('20');
   const [tab, setTab] = useState<SlipTab>('SINGLES');
+  const [expandedParlays, setExpandedParlays] = useState<Record<string, boolean>>({});
   const previousParlayCount = useRef(0);
 
   const isSinglesEmpty = !selection;
@@ -106,6 +107,10 @@ export const BetSlip: React.FC<BetSlipProps> = ({
     if (parts.length > 2) return;
     if (parts[1] && parts[1].length > 2) return;
     setStakeInput(cleaned.startsWith('.') ? `0${cleaned}` : cleaned);
+  };
+
+  const toggleParlayDetails = (betId: string) => {
+    setExpandedParlays((prev) => ({ ...prev, [betId]: !prev[betId] }));
   };
 
   const hasAnyPick = !isSinglesEmpty || !isParlayEmpty;
@@ -372,6 +377,29 @@ export const BetSlip: React.FC<BetSlipProps> = ({
                     <div key={bet.id} className="rounded-xl border border-slate-700/80 bg-gradient-to-b from-slate-900 to-slate-900/70 p-2.5 shadow-[0_1px_0_rgba(148,163,184,0.12)_inset]">
                       <p className="text-sm font-semibold text-slate-100 truncate">{bet.optionLabel}</p>
                       <p className="mt-0.5 text-[11px] text-slate-400 truncate">{bet.marketTitle}</p>
+                      <p className="mt-1 text-[10px] text-slate-500">{bet.parlayLegs?.length ?? 0} legs</p>
+                      {!!bet.parlayLegs?.length && (
+                        <button
+                          type="button"
+                          onClick={() => toggleParlayDetails(bet.id)}
+                          className="mt-1 text-[10px] font-semibold text-violet-300 hover:text-violet-200"
+                        >
+                          {expandedParlays[bet.id] ? 'hide legs' : 'show legs'}
+                        </button>
+                      )}
+                      {!!bet.parlayLegs?.length && expandedParlays[bet.id] && (
+                        <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/60 p-2">
+                          <div className="space-y-1.5">
+                            {bet.parlayLegs.map((leg, idx) => (
+                              <div key={`${bet.id}-leg-${idx}`} className="rounded-md border border-slate-800/70 bg-slate-900/70 px-2 py-1.5">
+                                <p className="text-[10px] font-semibold text-slate-200 truncate">{leg.optionLabel}</p>
+                                <p className="text-[10px] text-slate-500 truncate">{leg.marketTitle}</p>
+                                <p className="text-[10px] text-slate-400">odds {leg.odds.toFixed(2)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <div className="mt-2 flex items-center justify-between text-[11px]">
                         <span className="rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 font-semibold text-violet-200">Stake ${bet.stake.toFixed(2)}</span>
                         <span className="font-semibold text-emerald-300">To win ${bet.potentialPayout.toFixed(2)}</span>
@@ -403,6 +431,29 @@ export const BetSlip: React.FC<BetSlipProps> = ({
                     <div key={bet.id} className="rounded-xl border border-slate-700/80 bg-gradient-to-b from-slate-900 to-slate-900/70 p-2.5 shadow-[0_1px_0_rgba(148,163,184,0.12)_inset]">
                       <p className="text-sm font-semibold text-slate-100 truncate">{bet.optionLabel}</p>
                       <p className="mt-0.5 text-[11px] text-slate-400 truncate">{bet.marketTitle}</p>
+                      <p className="mt-1 text-[10px] text-slate-500">{bet.parlayLegs?.length ?? 0} legs</p>
+                      {!!bet.parlayLegs?.length && (
+                        <button
+                          type="button"
+                          onClick={() => toggleParlayDetails(bet.id)}
+                          className="mt-1 text-[10px] font-semibold text-violet-300 hover:text-violet-200"
+                        >
+                          {expandedParlays[bet.id] ? 'hide legs' : 'show legs'}
+                        </button>
+                      )}
+                      {!!bet.parlayLegs?.length && expandedParlays[bet.id] && (
+                        <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/60 p-2">
+                          <div className="space-y-1.5">
+                            {bet.parlayLegs.map((leg, idx) => (
+                              <div key={`${bet.id}-leg-${idx}`} className="rounded-md border border-slate-800/70 bg-slate-900/70 px-2 py-1.5">
+                                <p className="text-[10px] font-semibold text-slate-200 truncate">{leg.optionLabel}</p>
+                                <p className="text-[10px] text-slate-500 truncate">{leg.marketTitle}</p>
+                                <p className="text-[10px] text-slate-400">odds {leg.odds.toFixed(2)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <div className="mt-2 flex items-center justify-between text-[11px]">
                         <span className="rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 font-semibold text-violet-200">Stake ${bet.stake.toFixed(2)}</span>
                         <span className="font-semibold text-emerald-300">To win ${bet.potentialPayout.toFixed(2)}</span>
