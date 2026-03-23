@@ -1,87 +1,321 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Market, MarketOption } from '../models';
-import { Trash2, DollarSign, Wallet } from 'lucide-react';
+import { Trash2, X, Minus } from 'lucide-react';
+
+type SlipTab = 'SINGLES' | 'PARLAYS';
 
 interface BetSlipProps {
   selection: { market: Market; option: MarketOption } | null;
+  parlaySelections: Array<{ market: Market; option: MarketOption }>;
   onPlaceBet: (stake: number) => void;
   onClear: () => void;
+  onSelectBet: (market: Market, option: MarketOption) => void;
   balance: number;
 }
 
-export const BetSlip: React.FC<BetSlipProps> = ({ selection, onPlaceBet, onClear, balance }) => {
-  const [stake, setStake] = useState<number>(100);
+export const BetSlip: React.FC<BetSlipProps> = ({
+  selection,
+  parlaySelections,
+  onPlaceBet,
+  onClear,
+  onSelectBet,
+  balance,
+}) => {
+  const [stakeInput, setStakeInput] = useState<string>('20');
+  const [tab, setTab] = useState<SlipTab>('SINGLES');
+  const previousParlayCount = useRef(0);
 
-  if (!selection) return null;
-
-  const potentialPayout = stake * selection.option.odds;
+  const isSinglesEmpty = !selection;
+  const isParlayEmpty = parlaySelections.length === 0;
+  const stake = Number(stakeInput) || 0;
+  const potentialPayout = selection ? stake * selection.option.odds : 0;
+  const parlayPotentialPayout = stake * (parlaySelections.length ? parlaySelections.reduce((a, s) => a * s.option.odds, 1) : 0);
   const isAffordable = stake <= balance;
 
+  const decimalToAmerican = (decimalOdds: number) => {
+    if (!Number.isFinite(decimalOdds) || decimalOdds <= 1) return 0;
+    if (decimalOdds >= 2) return Math.round((decimalOdds - 1) * 100);
+    return Math.round(-100 / (decimalOdds - 1));
+  };
+
+  const marketToneLabel = (key?: MarketOption['marketKey']) => {
+    if (key === 'h2h') return 'TO WIN';
+    if (key === 'spreads') return 'SPREAD';
+    if (key === 'totals') return 'TOTAL';
+    return 'PICK';
+  };
+
+  const marketTone = useMemo(() => {
+    if (!selection) return '';
+    return marketToneLabel(selection.option.marketKey);
+  }, [selection]);
+
+  const singleAmericanOdds = useMemo(() => {
+    if (!selection) return 0;
+    return decimalToAmerican(selection.option.odds);
+  }, [selection]);
+
+  const combinedParlayDecimalOdds = useMemo(() => {
+    if (parlaySelections.length === 0) return 0;
+    return parlaySelections.reduce((acc, sel) => acc * sel.option.odds, 1);
+  }, [parlaySelections]);
+
+  const parlayAmericanOdds = useMemo(
+    () => decimalToAmerican(combinedParlayDecimalOdds),
+    [combinedParlayDecimalOdds]
+  );
+
+  const parlayLegs = useMemo(
+    () =>
+      parlaySelections.map((sel) => {
+        const odds = decimalToAmerican(sel.option.odds);
+        return {
+          id: `${sel.market.id}:${sel.option.id}`,
+          market: sel.market,
+          option: sel.option,
+          name: sel.option.label,
+          matchup: sel.market.title,
+          odds: odds >= 0 ? `+${odds}` : `${odds}`,
+          lineLabel: marketToneLabel(sel.option.marketKey),
+        };
+      }),
+    [parlaySelections]
+  );
+
+  useEffect(() => {
+    const wasParlay = previousParlayCount.current >= 2;
+    const isParlay = parlaySelections.length >= 2;
+    if (!wasParlay && isParlay) {
+      setTab('PARLAYS');
+    }
+    previousParlayCount.current = parlaySelections.length;
+  }, [parlaySelections.length]);
+
+  const setStakeFromInput = (raw: string) => {
+    const cleaned = raw.replace(/[^\d.]/g, '');
+    if (cleaned === '') {
+      setStakeInput('0');
+      return;
+    }
+    const parts = cleaned.split('.');
+    if (parts.length > 2) return;
+    if (parts[1] && parts[1].length > 2) return;
+    setStakeInput(cleaned.startsWith('.') ? `0${cleaned}` : cleaned);
+  };
+
+  const hasAnyPick = !isSinglesEmpty || !isParlayEmpty;
+  const singlesPlaceDisabled =
+    isSinglesEmpty || !isAffordable || stake <= 0;
+  const parlayPlaceDisabled =
+    isParlayEmpty || !isAffordable || stake <= 0;
+  const tabLabels: Record<SlipTab, string> = {
+    SINGLES: 'Singles',
+    PARLAYS: 'Parlays',
+  };
+
+  const cardClass = 'rounded-xl border border-slate-800 bg-[#100d1f]';
+
   return (
-    <div className="fixed bottom-0 left-0 right-0 lg:static lg:w-80 animate-in slide-in-from-bottom lg:slide-in-from-right duration-300 z-50">
-      <div className="mx-4 mb-4 lg:m-0 glass-card rounded-t-2xl lg:rounded-2xl p-6 shadow-2xl shadow-blue-900/20 border-t-2 border-blue-500">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Wallet className="text-blue-400" size={20} /> Bet Slip
-          </h2>
-          <button onClick={onClear} className="text-slate-500 hover:text-red-400 transition-colors">
-            <Trash2 size={20} />
+    <div className="fixed bottom-0 left-0 right-0 z-50 lg:static lg:z-auto lg:shrink-0 lg:w-[330px] lg:min-h-0 lg:h-full lg:overflow-y-auto lg:overscroll-contain animate-in slide-in-from-bottom lg:slide-in-from-right duration-300">
+      <div className="mx-4 mb-4 flex min-h-0 flex-col lg:mx-0 lg:mb-0 lg:min-h-full rounded-t-2xl lg:rounded-none lg:h-full p-4 lg:px-4 lg:pb-4 lg:pt-5 shadow-2xl border-t border-violet-500/40 lg:border-t-0 lg:border-l border-slate-700/70 bg-[#171427]">
+        <div className="flex items-center justify-between mb-3">
+          <div className="inline-flex items-center gap-2 rounded-full bg-slate-900/70 px-2 py-1 text-[11px]">
+            <span className="text-slate-300">Balance</span>
+            <span className="font-bold text-violet-300">${balance.toFixed(2)}</span>
+          </div>
+          <button type="button" className="text-slate-500 hover:text-slate-300 transition-colors" title="Close bet slip">
+            <X size={16} />
           </button>
         </div>
 
-        <div className="mb-6">
-          <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-700 mb-4">
-            <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">{selection.market.title}</p>
-            <div className="flex justify-between items-center">
-              <span className="font-bold text-slate-100">{selection.option.label}</span>
-              <span className="text-blue-400 font-black">@{selection.option.odds.toFixed(2)}</span>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Set Stake (Fake $)</label>
-              <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                  <DollarSign size={16} />
-                </div>
-                <input
-                  type="number"
-                  value={stake}
-                  onChange={(e) => setStake(Math.max(0, Number(e.target.value)))}
-                  className={`w-full bg-slate-900 border ${isAffordable ? 'border-slate-700' : 'border-red-500'} rounded-lg py-2 pl-9 pr-4 font-bold text-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all`}
-                />
-              </div>
-              {!isAffordable && <p className="text-red-400 text-[10px] mt-1 font-bold">Insufficient funds!</p>}
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              {[50, 200, 500].map(val => (
-                <button
-                  key={val}
-                  onClick={() => setStake(val)}
-                  className="py-1 px-2 rounded bg-slate-700 hover:bg-slate-600 text-xs font-bold transition-colors"
-                >
-                  +${val}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex justify-between items-center pt-4 border-t border-slate-700/50">
-              <span className="text-slate-400 text-sm">Potential Payout</span>
-              <span className="text-green-400 font-bold text-xl">${potentialPayout.toFixed(2)}</span>
-            </div>
-          </div>
+        {/* Tabs — underline style (same violet / slate palette) */}
+        <div className="flex border-b border-slate-800 mb-2">
+          {(['SINGLES', 'PARLAYS'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={`flex-1 pb-2.5 text-[11px] font-bold uppercase tracking-wide border-b-2 -mb-px transition-colors ${
+                tab === t
+                  ? 'border-violet-400 text-violet-200'
+                  : 'border-transparent text-slate-500 hover:text-slate-400'
+              }`}
+            >
+              {tabLabels[t]}
+            </button>
+          ))}
         </div>
 
         <button
-          disabled={!isAffordable || stake <= 0}
-          onClick={() => onPlaceBet(stake)}
-          className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all uppercase tracking-widest text-sm"
+          type="button"
+          onClick={onClear}
+          disabled={!hasAnyPick}
+          className="mb-3 flex w-full items-center justify-center gap-1.5 text-[11px] font-semibold text-violet-400 hover:text-violet-300 disabled:opacity-40 disabled:hover:text-violet-400"
         >
-          Place Simulated Bet
+          <Trash2 size={14} strokeWidth={2} />
+          Remove all selections
         </button>
+
+        {/* ——— Singles ——— */}
+        {tab === 'SINGLES' && selection ? (
+          <div className="mb-4 flex flex-col gap-3">
+            <div className={`${cardClass} p-3`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="inline-block rounded bg-violet-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">
+                    Single
+                  </span>
+                  <p className="mt-2 text-xs font-medium text-slate-200 truncate">{selection.option.label}</p>
+                </div>
+                <span className="shrink-0 text-lg font-black text-violet-300">
+                  {singleAmericanOdds >= 0 ? `+${singleAmericanOdds}` : singleAmericanOdds}
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Wager</p>
+                  <div className="mt-1 flex items-center rounded-lg border border-slate-700 bg-slate-900/80 px-2.5 py-2">
+                    <span className="text-slate-400 text-sm mr-0.5">$</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={stakeInput}
+                      onChange={(e) => setStakeFromInput(e.target.value)}
+                      className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-100 outline-none"
+                      aria-label="Wager amount"
+                    />
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Payout</p>
+                  <p className="mt-1 text-2xl font-semibold leading-tight text-slate-100">${potentialPayout.toFixed(2)}</p>
+                </div>
+              </div>
+              {!isAffordable && (
+                <p className="text-red-400 text-[10px] mt-2 font-semibold">Insufficient funds</p>
+              )}
+              <button
+                type="button"
+                disabled={singlesPlaceDisabled}
+                onClick={() => onPlaceBet(stake)}
+                className="mt-3 w-full bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-violet-600/20 active:scale-[0.99] transition-all text-xs uppercase tracking-wide"
+              >
+                PLACE BET
+              </button>
+            </div>
+
+            <div className={`${cardClass} p-3`}>
+              <div className="flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => onSelectBet(selection.market, selection.option)}
+                  className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-red-500/70 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                  aria-label="Remove selection"
+                >
+                  <Minus size={14} strokeWidth={2.5} />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-slate-100 truncate">{selection.option.label}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{marketTone}</p>
+                  <p className="text-xs text-slate-500 truncate mt-0.5">{selection.market.title}</p>
+                </div>
+                <span className="shrink-0 text-base font-bold text-violet-300">
+                  {singleAmericanOdds >= 0 ? `+${singleAmericanOdds}` : singleAmericanOdds}
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : tab === 'SINGLES' ? (
+          <div
+            className={`${cardClass} px-4 py-10 text-center text-slate-400 mb-4 lg:min-h-[28vh] flex flex-col items-center justify-center`}
+          >
+            <p className="text-sm font-semibold text-slate-300 mb-1">No singles yet</p>
+            <p className="text-xs text-slate-500">Pick a line from the board to add it here.</p>
+          </div>
+        ) : null}
+
+        {/* ——— Parlays ——— */}
+        {tab === 'PARLAYS' && !isParlayEmpty ? (
+          <div className="mb-4 flex flex-col gap-3">
+            <div className={`${cardClass} p-3`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 rounded bg-violet-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">
+                    Parlay
+                  </span>
+                  <span className="text-sm font-semibold text-slate-200 truncate">
+                    {parlayLegs.length}-Bet Parlay
+                  </span>
+                </div>
+                <span className="shrink-0 text-lg font-black text-violet-300">
+                  {parlayAmericanOdds >= 0 ? `+${parlayAmericanOdds}` : parlayAmericanOdds}
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Wager</p>
+                  <div className="mt-1 flex items-center rounded-lg border border-slate-700 bg-slate-900/80 px-2.5 py-2">
+                    <span className="text-slate-400 text-sm mr-0.5">$</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={stakeInput}
+                      onChange={(e) => setStakeFromInput(e.target.value)}
+                      className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-100 outline-none"
+                      aria-label="Wager amount"
+                    />
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Payout</p>
+                  <p className="mt-1 text-2xl font-semibold leading-tight text-slate-100">
+                    ${parlayPotentialPayout.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+              {!isAffordable && (
+                <p className="text-red-400 text-[10px] mt-2 font-semibold">Insufficient funds</p>
+              )}
+              <button
+                type="button"
+                disabled={parlayPlaceDisabled}
+                onClick={() => onPlaceBet(stake)}
+                className="mt-3 w-full bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-violet-600/20 active:scale-[0.99] transition-all text-xs uppercase tracking-wide"
+              >
+                PLACE BET
+              </button>
+            </div>
+
+            <div className={`${cardClass} divide-y divide-slate-800/90`}>
+              {parlayLegs.map((leg) => (
+                <div key={leg.id} className="flex gap-2.5 p-3">
+                  <button
+                    type="button"
+                    onClick={() => onSelectBet(leg.market, leg.option)}
+                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-red-500/70 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                    aria-label="Remove leg"
+                  >
+                    <Minus size={14} strokeWidth={2.5} />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-slate-100 truncate">{leg.name}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{leg.lineLabel}</p>
+                    <p className="text-xs text-slate-500 truncate mt-0.5">{leg.matchup}</p>
+                  </div>
+                  <span className="shrink-0 text-base font-bold text-violet-300">{leg.odds}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : tab === 'PARLAYS' ? (
+          <div
+            className={`${cardClass} px-4 py-10 text-center text-slate-400 mb-4 lg:min-h-[28vh] flex flex-col items-center justify-center`}
+          >
+            <p className="text-sm font-semibold text-slate-300 mb-1">No parlay legs yet</p>
+            <p className="text-xs text-slate-500">Add two or more picks to build a parlay.</p>
+          </div>
+        ) : null}
       </div>
     </div>
   );

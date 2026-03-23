@@ -7,7 +7,7 @@ interface AuthLayoutProps {
 }
 
 export const AuthLayout: React.FC<AuthLayoutProps> = ({ title, children }) => (
-  <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-4">
+  <div className="min-h-screen bg-gradient-to-br from-slate-800 via-[#0f172a] to-slate-950 flex items-center justify-center p-4">
     <div className="w-full max-w-md">
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-600/30">

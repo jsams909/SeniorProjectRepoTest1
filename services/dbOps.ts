@@ -219,42 +219,39 @@ export async function getBets(uid: string) : Promise<Bet[]> {
 }
 
 export async function getTopUsers() : Promise<LeaderboardEntry[]> {
-    var topUserList = new Array();
+    const topUserList: LeaderboardEntry[] = [];
 
+    const querySnapshot = await getDocs(collection(db, "userInfo"));
+    for (const docSnap of querySnapshot.docs) {
+        const data = docSnap.data();
+        const name = typeof data.name === "string" ? data.name : "";
+        if (!name.trim()) continue;
 
-    const querySnapshot = await getDocs(collection(db, "userInfo"))
-    querySnapshot.forEach(async (doc) => {
-        var ratio = (doc.data().wins / doc.data().losses) * 100
-        if (isNaN(ratio)) {
-            ratio = 100
+        const wins = Number(data.wins) || 0;
+        const losses = Number(data.losses) || 0;
+        let winRate = 0;
+        if (losses === 0) {
+            winRate = wins > 0 ? 100 : 0;
+        } else {
+            winRate = (wins / losses) * 100;
         }
-        const newTopUser : LeaderboardEntry = {
-            id: doc.id,
-            name: doc.data().name,
-            avatar: doc.data().name.slice(0, 2),
-            netWorth: doc.data().money,
-            winRate: ratio,
+        if (!Number.isFinite(winRate)) winRate = 0;
+        winRate = Math.min(100, Math.round(winRate));
+
+        const money = typeof data.money === "number" ? data.money : Number(data.money) || 0;
+
+        topUserList.push({
+            id: docSnap.id,
+            name,
+            avatar: name.slice(0, 2).toUpperCase(),
+            netWorth: money,
+            winRate,
             rank: 1,
-            isCurrentUser: false
-        }
-        topUserList.push(newTopUser)
-    })
-
-    const sortFunc = (field) => {
-        return (a, b) => {
-            let comp = 0;
-            if (a[field] > b[field]) {
-                comp = 1;
-            }
-            else {
-                comp = 1;
-            }
-
-            return comp * -1;
-        }
+            isCurrentUser: false,
+        });
     }
 
-    topUserList.sort((a, b) => b.netWorth - a.netWorth )
+    topUserList.sort((a, b) => b.netWorth - a.netWorth);
     var rankCounter = 0;
     for (const user of topUserList) {
         rankCounter++

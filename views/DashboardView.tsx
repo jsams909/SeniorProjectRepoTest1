@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, NavLink } from 'react-router-dom';
 import {
   Trophy,
@@ -15,31 +15,47 @@ import {
   RefreshCw,
   AlertCircle,
   LogOut,
-  User,
+  Settings,
+  Flame,
+  Clock3,
+  ChevronRight,
+  Compass,
+  Sparkles,
+  CircleDot,
 } from 'lucide-react';
 import type { Market, MarketOption, Bet } from '../models';
-import { MarketCard } from '../components/MarketCard';
 import { BetSlip } from '../components/BetSlip';
 import { Leaderboard } from '../components/Leaderboard';
 import { SocialView } from '../components/SocialView';
+import { HomeLanding } from '../components/HomeLanding';
 import { SettingsView } from './SettingsView';
 import { ProfileView } from './ProfileView';
 import type { LeaderboardEntry, Friend, SocialActivity } from '../models';
 import { DAILY_BONUS_AMOUNT } from '../models/constants';
 
-type DashboardViewType = 'MARKETS' | 'HISTORY' | 'LEADERBOARD' | 'SOCIAL' | 'PROFILE' | 'SETTINGS';
+type DashboardViewType = 'HOME' | 'MARKETS' | 'HISTORY' | 'LEADERBOARD' | 'SOCIAL' | 'SETTINGS';
 
 function pathToView(pathname: string): DashboardViewType {
   // React Router v6 strips basename from pathname, so we get e.g. "/friends" not "/bethub/friends"
-  const segment = (pathname.replace(/^\/bethub\/?/, '').replace(/^\//, '') || 'markets').split('/')[0] || 'markets';
+  const normalized = pathname.replace(/^\/bethub\/?/, '').replace(/^\//, '');
+  const segment = normalized.split('/').filter(Boolean)[0] ?? '';
+
   switch (segment) {
-    case 'profile': return 'PROFILE';
-    case 'settings': return 'SETTINGS';
-    case 'friends': return 'SOCIAL';
-    case 'leaderboard': return 'LEADERBOARD';
-    case 'history': return 'HISTORY';
+    case '':
+      return 'HOME';
+    case 'bet':
     case 'markets':
-    default: return 'MARKETS';
+      return 'MARKETS';
+    case 'profile':
+      return 'SETTINGS';
+    case 'friends':
+      return 'SOCIAL';
+    case 'leaderboard':
+      return 'LEADERBOARD';
+    case 'history':
+      return 'HISTORY';
+    default:
+      return 'HOME';
   }
 }
 
@@ -47,6 +63,7 @@ interface DashboardViewProps {
   balance: number;
   activeBets: Bet[];
   betSelection: { market: Market; option: MarketOption } | null;
+  parlaySelections: Array<{ market: Market; option: MarketOption }>;
   dailyBonusAvailable: boolean;
   bonusMessage: string | null;
   view: string;
@@ -80,6 +97,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   const {
     balance,
     betSelection,
+    parlaySelections,
     dailyBonusAvailable,
     bonusMessage,
     userInitials,
@@ -111,15 +129,142 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   const location = useLocation();
   const navigate = useNavigate();
   const view = pathToView(location.pathname);
+  const [localBets, setLocalBets] = useState<Bet[]>([]);
+  const [marketLayoutMode, setMarketLayoutMode] = useState<'DISCOVER' | 'ALL_LEAGUES'>('DISCOVER');
+
+  const splitTeams = (title: string) => {
+    const [away, home] = title.split(' @ ');
+    return {
+      away: away || title,
+      home: home || 'TBD',
+    };
+  };
+
+  const firstByKey = (market: Market, key: MarketOption['marketKey'], startsWith?: string) => {
+    const matching = market.options.filter((o) => o.marketKey === key);
+    if (!startsWith) return matching[0] ?? null;
+    return matching.find((o) => o.label.toLowerCase().startsWith(startsWith.toLowerCase())) ?? null;
+  };
+
+  const formatMarketTime = (market: Market) => {
+    const date = new Date(market.startTime);
+    const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (market.status === 'LIVE') {
+      return { label: `Live • Started ${time}`, tone: 'live' as const };
+    }
+    return { label: time, tone: 'upcoming' as const };
+  };
+
+  const leagueBadge = (label: string) => {
+    const words = label.split(' ').filter(Boolean);
+    if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+    return `${words[0][0] ?? ''}${words[1][0] ?? ''}`.toUpperCase();
+  };
+  
+  /**
+   * MLB / NHL: Simple Icons via jsDelivr (stable SVG marks).
+   * Soccer: classic association-football ball artwork (distinct from generic “football” clip).
+   */
+  const SPORT_LOGOS: Record<string, string> = {
+    Football: 'https://upload.wikimedia.org/wikipedia/en/a/a2/National_Football_League_logo.svg',
+    Basketball: 'https://upload.wikimedia.org/wikipedia/en/0/03/National_Basketball_Association_logo.svg',
+    Baseball: 'https://cdn.jsdelivr.net/npm/simple-icons@11.14.0/icons/mlb.svg',
+    Hockey: 'https://cdn.jsdelivr.net/npm/simple-icons@11.14.0/icons/nhl.svg',
+    Soccer:
+      'https://upload.wikimedia.org/wikipedia/commons/8/8d/Association_football_ball_01.svg',
+  };
+
+  const SPORT_ICON_EMOJI: Record<string, string> = {
+    Baseball: '⚾',
+    Hockey: '🏒',
+    Soccer: '⚽',
+    Football: '🏈',
+    Basketball: '🏀',
+  };
+
+  const normalizeSportKey = (sport: string) => {
+    const s = sport.trim();
+    return Object.keys(SPORT_LOGOS).find((k) => k.toLowerCase() === s.toLowerCase()) ?? s;
+  };
+
+  const renderSportIcon = (sport: string, className = 'h-5 w-5') => {
+    const key = normalizeSportKey(sport);
+    const emoji = SPORT_ICON_EMOJI[key];
+    const src = SPORT_LOGOS[key];
+    if (!src) {
+      return emoji ? (
+        <span className={`inline-flex items-center justify-center ${className} text-[1.1rem] leading-none`}>{emoji}</span>
+      ) : (
+        <CircleDot size={14} className="text-slate-300" />
+      );
+    }
+    const lightMonoLogo = key === 'Baseball' || key === 'Hockey';
+    return (
+      <span className="inline-flex items-center justify-center">
+        <img
+          src={src}
+          alt={`${key} logo`}
+          className={`${className} object-contain ${lightMonoLogo ? 'brightness-0 invert opacity-90' : ''}`}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+            const next = e.currentTarget.nextElementSibling as HTMLElement | null;
+            if (next) next.style.display = 'inline-flex';
+          }}
+        />
+        <span className="hidden items-center justify-center text-[1.1rem] leading-none" aria-hidden>
+          {emoji ?? '·'}
+        </span>
+      </span>
+    );
+  };
+
+  const leaguesBySport: Record<string, string[]> = markets.reduce((acc, market) => {
+    if (!acc[market.category]) acc[market.category] = [];
+    if (!acc[market.category].includes(market.subtitle)) acc[market.category].push(market.subtitle);
+    return acc;
+  }, {} as Record<string, string[]>);
+
+  const safeBalance = Number.isFinite(balance) ? balance : 0;
+  const displayBalance = `$${Math.max(0, safeBalance).toFixed(2)}`;
+  const isOptionSelected = (market: Market, option: MarketOption) =>
+    parlaySelections.some((sel) => sel.market.id === market.id && sel.option.id === option.id);
 
   useEffect(() => {
-    if (view === 'MARKETS') {
-      onRetryMarkets();
-    }
-  }, [view, onRetryMarkets]);
+    const uid = localStorage.getItem('uid');
+    if (!uid) return;
+
+    const unsubscribe = listenForChange(uid);
+
+    (async () => {
+      try {
+        const money = await getUserMoney(uid);
+        if (money != null) localStorage.setItem('userMoney', String(money));
+      } catch {
+        /* ignore */
+      }
+      try {
+        const bets = await getBets(uid);
+        setLocalBets(bets);
+      } catch {
+        /* ignore */
+      }
+    })();
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   const renderContent = () => {
     switch (view) {
+      case 'HOME':
+        return (
+          <div className="animate-in fade-in duration-500 flex min-h-0 w-full flex-1 flex-col">
+            <HomeLanding dailyBonusAvailable={dailyBonusAvailable} onDailyBonus={onDailyBonus} onLogout={onLogout} />
+          </div>
+        );
       case 'LEADERBOARD':
         return <Leaderboard entries={leaderboardEntries} />;
       case 'SOCIAL':
@@ -175,7 +320,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
                 <div className="py-20 text-center glass-card rounded-2xl border-dashed">
                   <Gamepad2 className="mx-auto text-slate-700 mb-4" size={48} />
                   <h3 className="text-xl font-bold text-slate-500">No bets placed yet</h3>
-                  <button onClick={() => navigate('/')} className="mt-4 text-blue-400 hover:text-blue-300 font-bold">
+                  <button onClick={() => navigate('/bet')} className="mt-4 text-blue-400 hover:text-blue-300 font-bold">
                     Start betting now &rarr;
                   </button>
                 </div>
@@ -187,37 +332,125 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
       default:
         return (
           <>
-            <div className="flex flex-col sm:flex-row items-center gap-4 mb-8">
-              <div className="relative flex-1 w-full">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                <input
-                  type="text"
-                  placeholder="Search games..."
-                  value={searchQuery}
-                  onChange={(e) => onSearchChange(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3 pl-12 pr-4 outline-none focus:border-blue-500 transition-all text-sm"
-                />
-              </div>
-              <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 overflow-x-auto no-scrollbar max-w-full">
-                {sportTabs.map((t) => (
+            <div className="grid grid-cols-1 xl:grid-cols-[220px_minmax(0,1fr)] gap-5">
+              <aside className="glass-card rounded-xl p-3 border border-slate-800/80 h-fit xl:sticky xl:top-6">
+                <div className="grid grid-cols-2 gap-1 mb-3 rounded-lg border border-slate-800 bg-slate-900 p-1">
                   <button
-                    key={t}
-                    onClick={() => onSportFilter(t)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${sportFilter === t ? 'bg-slate-800 text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
+                    onClick={() => setMarketLayoutMode('DISCOVER')}
+                    className={`inline-flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-bold transition-colors ${
+                      marketLayoutMode === 'DISCOVER' ? 'bg-slate-700 text-blue-300' : 'text-slate-500 hover:text-slate-300'
+                    }`}
                   >
-                    {t === 'ALL' ? 'All Sports' : t}
+                    <Compass size={11} />
+                    Discover
                   </button>
-                ))}
-              </div>
-            </div>
+                  <button
+                    onClick={() => {
+                      setMarketLayoutMode('ALL_LEAGUES');
+                      onSportFilter('ALL');
+                      onLeagueFilter('ALL');
+                    }}
+                    className={`rounded-md px-2 py-1.5 text-[10px] font-bold transition-colors ${
+                      marketLayoutMode === 'ALL_LEAGUES' ? 'bg-slate-700 text-blue-300' : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    All Leagues
+                  </button>
+                </div>
 
-            {sportFilter !== 'ALL' && availableLeagues.length > 0 && (
-              <div className="mb-6">
-                <p className="text-xs font-bold text-slate-500 uppercase mb-2">Leagues</p>
-                <div className="flex flex-wrap gap-2">
+                {marketLayoutMode === 'DISCOVER' ? (
+                  <>
+                    <div className="grid grid-cols-4 gap-1.5 mb-4">
+                      {sportTabs.filter((tab) => tab !== 'ALL').slice(0, 8).map((tab) => (
+                        <button
+                          key={`tile-${tab}`}
+                          onClick={() => onSportFilter(tab)}
+                          title={tab}
+                          className={`rounded-lg border p-2 flex items-center justify-center text-[10px] font-black transition-all ${
+                            sportFilter === tab
+                              ? 'border-blue-500 bg-blue-600/20 text-blue-200'
+                              : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          {renderSportIcon(tab)}
+                        </button>
+                      ))}
+                    </div>
+
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Popular</p>
+                    <div className="space-y-1.5 mb-4">
+                      <button className="w-full text-left px-2 py-1.5 rounded-md text-xs border border-slate-800 bg-slate-900/70 text-amber-300/90 hover:text-amber-200 transition-all inline-flex items-center gap-2">
+                        <Sparkles size={12} />
+                        Boosts
+                      </button>
+                      <button className="w-full text-left px-2 py-1.5 rounded-md text-xs border border-slate-800 bg-slate-900/70 text-cyan-300/90 hover:text-cyan-200 transition-all inline-flex items-center gap-2">
+                        <Flame size={12} />
+                        Promotions
+                      </button>
+                      {markets.slice(0, 5).map((market) => (
+                        <button
+                          key={`popular-${market.id}`}
+                          onClick={() => onLeagueFilter(market.subtitle)}
+                          className="w-full text-left px-2 py-1.5 rounded-md text-xs border border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700 hover:bg-slate-900 transition-all truncate inline-flex items-center gap-2"
+                        >
+                          <CircleDot size={11} className="shrink-0" />
+                          <span className="truncate">{market.title.replace(' @ ', ' vs ')}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-4 mb-4">
+                    {Object.entries(leaguesBySport)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .slice(0, 6)
+                      .map(([sport, leagues]) => (
+                        <div key={`sport-group-${sport}`} className="border-b border-slate-800 pb-3 last:border-b-0">
+                          <div className="flex items-center justify-between mb-2">
+                            <button
+                              onClick={() => onSportFilter(sport)}
+                              className="inline-flex items-center gap-2 text-sm font-semibold text-slate-200 hover:text-blue-300 transition-colors"
+                            >
+                              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-700">
+                                {renderSportIcon(sport, 'h-3.5 w-3.5')}
+                              </span>
+                              {sport}
+                            </button>
+                            <button
+                              onClick={() => onSportFilter(sport)}
+                              className="text-[11px] text-violet-300 hover:text-violet-200 font-bold"
+                            >
+                              View all {leagues.length}
+                            </button>
+                          </div>
+                          <div className="space-y-1">
+                            {leagues.slice(0, 3).map((league) => (
+                              <button
+                                key={`group-league-${sport}-${league}`}
+                                onClick={() => {
+                                  onSportFilter(sport);
+                                  onLeagueFilter(league);
+                                }}
+                                className="block w-full text-left text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                              >
+                                {league}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Leagues</p>
+                <div className="space-y-1.5 max-h-[34vh] overflow-y-auto custom-scrollbar pr-1">
                   <button
                     onClick={() => onLeagueFilter('ALL')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${leagueFilter === 'ALL' ? 'bg-slate-700 text-blue-400 border border-slate-600' : 'bg-slate-800/50 text-slate-500 hover:text-slate-300 border border-slate-700'}`}
+                    className={`w-full text-left px-2.5 py-2 rounded-md text-xs font-bold transition-all ${
+                      leagueFilter === 'ALL'
+                        ? 'bg-slate-700 text-blue-300 border border-slate-600'
+                        : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                    }`}
                   >
                     All Leagues
                   </button>
@@ -225,65 +458,198 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
                     <button
                       key={league}
                       onClick={() => onLeagueFilter(league)}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${leagueFilter === league ? 'bg-slate-700 text-blue-400 border border-slate-600' : 'bg-slate-800/50 text-slate-500 hover:text-slate-300 border border-slate-700'}`}
+                      className={`w-full text-left px-2.5 py-2 rounded-md text-xs font-bold transition-all ${
+                        leagueFilter === league
+                          ? 'bg-slate-700 text-blue-300 border border-slate-600'
+                          : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                      }`}
                     >
                       {league}
                     </button>
                   ))}
                 </div>
-              </div>
-            )}
+              </aside>
 
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-4">
-                <Loader2 className="text-blue-400 animate-spin" size={48} />
-                <p className="text-slate-400">Loading live odds...</p>
-              </div>
-            ) : error ? (
-              <div className="glass-card rounded-2xl p-8 text-center border-red-500/20">
-                <AlertCircle className="mx-auto text-red-400 mb-4" size={48} />
-                <h3 className="text-xl font-bold text-slate-200 mb-2">Couldn&apos;t load odds</h3>
-                <p className="text-slate-400 mb-4">{error}</p>
-                <p className="text-xs text-slate-500 mb-4">Set ODDS_API_KEY in .env.local and restart the dev server.</p>
-                <button onClick={onRetryMarkets} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold transition-all">
-                  <RefreshCw size={18} /> Retry
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {markets.length > 0 ? (
-                  markets.map(market => (
-                    <MarketCard key={market.id} market={market} onBetClick={onSelectBet} />
-                  ))
+              <div className="space-y-4">
+                <div className="flex items-center">
+                  <div className="relative w-full max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                    <input
+                      type="text"
+                      placeholder="Search games..."
+                      value={searchQuery}
+                      onChange={(e) => onSearchChange(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2.5 pl-10 pr-3 outline-none focus:border-blue-500 transition-all text-sm"
+                    />
+                  </div>
+                </div>
+
+                {!loading && !error && leagueFilter === 'ALL' && (
+                  <section className="mb-2">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Flame className="text-orange-400" size={16} />
+                      <h3 className="text-xl font-bold text-slate-100 leading-none">Trending Now</h3>
+                    </div>
+                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                      {sportTabs
+                        .filter((tab) => tab !== 'ALL')
+                        .slice(0, 8)
+                        .map((tab) => (
+                          <button
+                            key={`trend-tab-${tab}`}
+                            onClick={() => onSportFilter(tab)}
+                            className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-bold transition-all ${
+                              sportFilter === tab
+                                ? 'border-violet-400/80 bg-violet-500/20 text-violet-200'
+                                : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-800">
+                              {renderSportIcon(tab, 'h-5 w-5')}
+                            </span>
+                            {tab}
+                          </button>
+                        ))}
+                    </div>
+                    <button className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-slate-300 hover:text-blue-300 transition-colors">
+                      View All Games <ChevronRight size={14} />
+                    </button>
+                  </section>
+                )}
+
+                {loading ? (
+                  <div className="flex flex-col items-center justify-center py-20 gap-4">
+                    <Loader2 className="text-blue-400 animate-spin" size={48} />
+                    <p className="text-slate-400">Loading live odds...</p>
+                  </div>
+                ) : error ? (
+                  <div className="glass-card rounded-2xl p-8 text-center border-red-500/20">
+                    <AlertCircle className="mx-auto text-red-400 mb-4" size={48} />
+                    <h3 className="text-xl font-bold text-slate-200 mb-2">Couldn&apos;t load odds</h3>
+                    <p className="text-slate-400 mb-4">{error}</p>
+                    <p className="text-xs text-slate-500 mb-4">Set ODDS_API_KEY in .env.local and restart the dev server.</p>
+                    <button onClick={onRetryMarkets} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold transition-all">
+                      <RefreshCw size={18} /> Retry
+                    </button>
+                  </div>
                 ) : (
-                  <div className="col-span-full py-20 text-center">
-                    <BarChart3 className="mx-auto text-slate-700 mb-4" size={48} />
-                    <h3 className="text-xl font-bold text-slate-500">No matches found</h3>
-                    <p className="text-slate-600">
-                      {sportFilter === 'ALL' ? 'Try a different search term.' : leagueFilter !== 'ALL' ? `No ${leagueFilter} games at the moment. Try another league or sport.` : `No ${sportFilter} games at the moment. Try another sport.`}
-                    </p>
+                  <div className="overflow-hidden rounded-xl border border-slate-800/90 bg-slate-950/35">
+                    <div className="grid grid-cols-[minmax(230px,1.2fr)_repeat(3,minmax(140px,0.7fr))] bg-slate-900/75 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                      <div>Game</div>
+                      <div className="text-center">Spread</div>
+                      <div className="text-center">Total</div>
+                      <div className="text-center">Winner</div>
+                    </div>
+                    {markets.length > 0 ? (
+                      markets.map((market) => {
+                        const teams = splitTeams(market.title);
+                        const spreadAway = market.options.find((o) => o.marketKey === 'spreads' && o.label.toLowerCase().includes(teams.away.toLowerCase()));
+                        const spreadHome = market.options.find((o) => o.marketKey === 'spreads' && o.label.toLowerCase().includes(teams.home.toLowerCase()));
+                        const totalOver = firstByKey(market, 'totals', 'over') ?? market.options.find((o) => o.marketKey === 'totals');
+                        const totalUnder = firstByKey(market, 'totals', 'under') ?? market.options.filter((o) => o.marketKey === 'totals')[1] ?? null;
+                        const winnerAway = market.options.find((o) => o.marketKey === 'h2h' && o.label.toLowerCase().includes(teams.away.toLowerCase()));
+                        const winnerHome = market.options.find((o) => o.marketKey === 'h2h' && o.label.toLowerCase().includes(teams.home.toLowerCase()));
+                        const spreadFallback = firstByKey(market, 'spreads');
+                        const winnerFallback = firstByKey(market, 'h2h') ?? market.options[0] ?? null;
+                        const timeMeta = formatMarketTime(market);
+                        const rowPairs: Array<[MarketOption | null, MarketOption | null]> = [
+                          [spreadAway ?? spreadFallback, spreadHome],
+                          [totalOver, totalUnder],
+                          [winnerAway ?? winnerFallback, winnerHome],
+                        ];
+                        return (
+                          <div
+                            key={market.id}
+                            className="grid grid-cols-[minmax(230px,1.2fr)_repeat(3,minmax(140px,0.7fr))] items-stretch px-4 py-2.5 border-t border-slate-800/90 bg-slate-900/25 hover:bg-slate-800/35 transition-colors"
+                          >
+                            <div className="pr-3">
+                              <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5 flex items-center gap-2">
+                                <span className={`inline-flex items-center gap-1 ${timeMeta.tone === 'live' ? 'text-red-400' : 'text-emerald-400'}`}>
+                                  <Clock3 size={10} />
+                                  {timeMeta.label}
+                                </span>
+                                <span className="text-slate-600">|</span>
+                                {market.status === 'LIVE' ? (
+                                  <span className="inline-flex items-center gap-1 text-red-400">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                                    Live
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">Upcoming</span>
+                                )}
+                                <span>{market.subtitle}</span>
+                              </p>
+                              <div className="space-y-1">
+                                <p className="text-sm font-semibold text-slate-100 leading-tight">{teams.away}</p>
+                                <p className="text-sm font-semibold text-slate-200 leading-tight">{teams.home}</p>
+                              </div>
+                            </div>
+
+                            {rowPairs.map((pair, idx) => (
+                              <div className="flex flex-col justify-center gap-1" key={`${market.id}-${idx}`}>
+                                {pair.map((opt, pairIdx) => (
+                                  opt ? (
+                                    <button
+                                      key={`${opt.id}-${pairIdx}`}
+                                      onClick={() => onSelectBet(market, opt)}
+                                      className={`w-full rounded-md border px-2.5 py-1.5 text-left transition-all ${
+                                        isOptionSelected(market, opt)
+                                          ? 'border-violet-400 bg-violet-600/20 shadow-[0_0_0_1px_rgba(167,139,250,0.45)]'
+                                          : 'border-slate-700/90 bg-slate-900/95 hover:border-blue-500/80 hover:bg-blue-600/15'
+                                      }`}
+                                    >
+                                      <p className="text-[10px] text-slate-400 truncate">{opt.label}</p>
+                                      <p className={`text-sm font-semibold ${isOptionSelected(market, opt) ? 'text-violet-200' : 'text-blue-300'}`}>
+                                        {opt.odds.toFixed(2)}
+                                      </p>
+                                    </button>
+                                  ) : (
+                                    <div key={`${market.id}-na-${idx}-${pairIdx}`} className="w-full rounded-md border border-slate-800 bg-slate-900/60 px-2.5 py-2 text-center text-xs text-slate-600">
+                                      N/A
+                                    </div>
+                                  )
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="col-span-full py-20 text-center">
+                        <BarChart3 className="mx-auto text-slate-700 mb-4" size={48} />
+                        <h3 className="text-xl font-bold text-slate-500">No matches found</h3>
+                        <p className="text-slate-600">
+                          {sportFilter === 'ALL' ? 'Try a different search term.' : leagueFilter !== 'ALL' ? `No ${leagueFilter} games at the moment. Try another league or sport.` : `No ${sportFilter} games at the moment. Try another sport.`}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
+            </div>
           </>
         );
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-100 flex flex-col lg:flex-row">
+    <div className="h-screen max-h-screen min-h-0 overflow-hidden bg-gradient-to-br from-slate-800 via-[#0f172a] to-slate-950 text-slate-100 flex flex-col lg:flex-row">
       {bonusMessage && (
         <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-sm font-medium text-green-400 shadow-lg animate-in fade-in slide-in-from-top-2">
           {bonusMessage}
         </div>
       )}
-      <nav className="w-full lg:w-20 bg-slate-900 border-b lg:border-r border-slate-800 flex flex-row lg:flex-col items-center py-4 px-2 lg:py-8 sticky top-0 z-40 lg:h-screen justify-between lg:justify-start lg:gap-8">
-        <NavLink to="/" className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/40 cursor-pointer [&.active]:ring-2 [&.active]:ring-blue-400 [&.active]:ring-offset-2 [&.active]:ring-offset-slate-900">
+      <nav className="w-full shrink-0 lg:w-20 bg-gradient-to-b from-slate-900 to-slate-950 border-b lg:border-r border-slate-800 flex flex-row lg:flex-col items-center py-4 px-2 lg:py-8 z-40 lg:h-full lg:min-h-0 justify-between lg:justify-start lg:gap-8">
+        <NavLink
+          to="/"
+          end
+          title="Home"
+          className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/40 cursor-pointer [&.active]:ring-2 [&.active]:ring-blue-400 [&.active]:ring-offset-2 [&.active]:ring-offset-slate-900"
+        >
           <Zap className="text-white" size={24} />
         </NavLink>
         <div className="flex lg:flex-col gap-4">
-          <NavLink to="/" end title="Markets" className={({ isActive }) => `p-3 rounded-xl transition-all ${isActive ? 'bg-blue-600/10 text-blue-400' : 'text-slate-500 hover:bg-slate-800'}`}>
+          <NavLink to="/bet" title="Live betting" className={({ isActive }) => `p-3 rounded-xl transition-all ${isActive ? 'bg-blue-600/10 text-blue-400' : 'text-slate-500 hover:bg-slate-800'}`}>
             <TrendingUp size={24} />
           </NavLink>
           <NavLink to="/leaderboard" title="Leaderboard" className={({ isActive }) => `p-3 rounded-xl transition-all ${isActive ? 'bg-blue-600/10 text-blue-400' : 'text-slate-500 hover:bg-slate-800'}`}>
@@ -315,40 +681,59 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
         </div>
       </nav>
 
-      <main className="flex-1 min-w-0 w-full overflow-y-auto custom-scrollbar p-4 lg:p-8">
-        <header className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6">
-          <div>
-            <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
-              BetHub <span className="text-xs font-normal text-slate-500 bg-slate-800 px-2 py-1 rounded">LIVE</span>
-            </h1>
-            <p className="text-slate-400 mt-1">Simulated betting with fake currency.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="glass-card flex items-center gap-3 px-6 py-3 rounded-2xl border-green-500/20 shadow-lg shadow-green-900/10">
-              <div className="w-10 h-10 bg-green-500/10 rounded-full flex items-center justify-center">
-                <WalletIcon className="text-green-400" size={20} />
+      <main
+        className={`flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain custom-scrollbar ${view === 'HOME' ? 'p-0 flex flex-col' : 'p-4 lg:p-8'}`}
+      >
+        {view !== 'HOME' && (
+          <header className="mb-7">
+            <div className="rounded-xl border border-slate-800/90 bg-slate-900/35 px-4 py-4 lg:px-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-[2rem] leading-none font-extrabold text-white tracking-tight">BetHub</h1>
+                  <p className="text-slate-400 mt-2 text-sm">Simulated betting with fake currency.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300">
+                    <WalletIcon size={13} />
+                    Balance
+                    <span className="text-emerald-200">{displayBalance}</span>
+                  </span>
+                  <button
+                    onClick={onDailyBonus}
+                    disabled={!dailyBonusAvailable}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5 transition-all active:scale-95 ${
+                      dailyBonusAvailable
+                        ? 'bg-indigo-600 hover:bg-indigo-500 text-indigo-50 shadow-md shadow-indigo-700/30'
+                        : 'bg-slate-700/80 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <Trophy size={14} />
+                    {dailyBonusAvailable ? `Free Claim +$${DAILY_BONUS_AMOUNT}` : 'Claimed'}
+                  </button>
+                </div>
               </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-500 uppercase">Wallet Balance</p>
-                <p className="text-xl font-black text-green-400">${balance.toLocaleString()}</p>
-              </div>
+              <div className="mt-4 border-b border-slate-800/70" />
             </div>
-            <button
-              onClick={onDailyBonus}
-              disabled={!(dailyBonusAvailable)}
-              className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all active:scale-95 ${dailyBonusAvailable ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
-            >
-              <Trophy size={18} /> {dailyBonusAvailable ? `Daily Bonus (+$${DAILY_BONUS_AMOUNT})` : 'Claimed Today'}
-            </button>
-            <button onClick={onLogout} className="lg:hidden px-4 py-2 rounded-xl text-sm text-slate-500 hover:text-slate-300 hover:bg-slate-800 flex items-center gap-2">
-              <LogOut size={16} /> Log out
-            </button>
-          </div>
-        </header>
+            <div className="flex flex-wrap items-center gap-3">
+              <button onClick={onLogout} className="lg:hidden px-4 py-2 rounded-xl text-sm text-slate-500 hover:text-slate-300 hover:bg-slate-800 flex items-center gap-2">
+                <LogOut size={16} /> Log out
+              </button>
+            </div>
+          </header>
+        )}
         {renderContent()}
       </main>
 
-      <BetSlip selection={betSelection} onClear={onClearBet} onPlaceBet={onPlaceBet} balance={balance} />
+      {view === 'MARKETS' && (
+        <BetSlip
+          selection={betSelection}
+          parlaySelections={parlaySelections}
+          onClear={onClearBet}
+          onPlaceBet={onPlaceBet}
+          onSelectBet={onSelectBet}
+          balance={balance}
+        />
+      )}
     </div>
   );
 };
