@@ -1,6 +1,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Market, MarketOption } from '../models';
+import { Bet, Market, MarketOption } from '../models';
 import { Trash2, X, Minus } from 'lucide-react';
 
 type SlipTab = 'SINGLES' | 'PARLAYS';
@@ -8,7 +8,8 @@ type SlipTab = 'SINGLES' | 'PARLAYS';
 interface BetSlipProps {
   selection: { market: Market; option: MarketOption } | null;
   parlaySelections: Array<{ market: Market; option: MarketOption }>;
-  onPlaceBet: (stake: number) => void;
+  activeBets: Bet[];
+  onPlaceBet: (stake: number, betType?: 'single' | 'parlay') => void;
   onClear: () => void;
   onSelectBet: (market: Market, option: MarketOption) => void;
   balance: number;
@@ -17,6 +18,7 @@ interface BetSlipProps {
 export const BetSlip: React.FC<BetSlipProps> = ({
   selection,
   parlaySelections,
+  activeBets,
   onPlaceBet,
   onClear,
   onSelectBet,
@@ -32,6 +34,8 @@ export const BetSlip: React.FC<BetSlipProps> = ({
   const potentialPayout = selection ? stake * selection.option.odds : 0;
   const parlayPotentialPayout = stake * (parlaySelections.length ? parlaySelections.reduce((a, s) => a * s.option.odds, 1) : 0);
   const isAffordable = stake <= balance;
+  const singleBets = useMemo(() => activeBets.filter((b) => (b.betType ?? 'single') === 'single'), [activeBets]);
+  const parlayBets = useMemo(() => activeBets.filter((b) => b.betType === 'parlay'), [activeBets]);
 
   const decimalToAmerican = (decimalOdds: number) => {
     if (!Number.isFinite(decimalOdds) || decimalOdds <= 1) return 0;
@@ -198,7 +202,7 @@ export const BetSlip: React.FC<BetSlipProps> = ({
               <button
                 type="button"
                 disabled={singlesPlaceDisabled}
-                onClick={() => onPlaceBet(stake)}
+                onClick={() => onPlaceBet(stake, 'single')}
                 className="mt-3 w-full bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-violet-600/20 active:scale-[0.99] transition-all text-xs uppercase tracking-wide"
               >
                 PLACE BET
@@ -225,13 +229,60 @@ export const BetSlip: React.FC<BetSlipProps> = ({
                 </span>
               </div>
             </div>
+
+            <div className={`${cardClass} p-3.5`}>
+              <div className="mb-2.5 flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Current Singles</p>
+                <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-slate-300">{singleBets.length}</span>
+              </div>
+              {singleBets.length === 0 ? (
+                <p className="text-xs text-slate-500">No single bets placed yet.</p>
+              ) : (
+                <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                  {singleBets.slice(0, 10).map((bet) => (
+                    <div key={bet.id} className="rounded-xl border border-slate-700/80 bg-gradient-to-b from-slate-900 to-slate-900/70 p-2.5 shadow-[0_1px_0_rgba(148,163,184,0.12)_inset]">
+                      <p className="text-sm font-semibold text-slate-100 truncate">{bet.optionLabel}</p>
+                      <p className="mt-0.5 text-[11px] text-slate-400 truncate">{bet.marketTitle}</p>
+                      <div className="mt-2 flex items-center justify-between text-[11px]">
+                        <span className="rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 font-semibold text-violet-200">Stake ${bet.stake.toFixed(2)}</span>
+                        <span className="font-semibold text-emerald-300">To win ${bet.potentialPayout.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : tab === 'SINGLES' ? (
-          <div
-            className={`${cardClass} px-4 py-10 text-center text-slate-400 mb-4 lg:min-h-[28vh] flex flex-col items-center justify-center`}
-          >
-            <p className="text-sm font-semibold text-slate-300 mb-1">No singles yet</p>
-            <p className="text-xs text-slate-500">Pick a line from the board to add it here.</p>
+          <div className="mb-4 flex flex-col gap-3">
+            <div
+              className={`${cardClass} px-4 py-10 text-center text-slate-400 lg:min-h-[28vh] flex flex-col items-center justify-center`}
+            >
+              <p className="text-sm font-semibold text-slate-300 mb-1">No singles yet</p>
+              <p className="text-xs text-slate-500">Pick a line from the board to add it here.</p>
+            </div>
+            <div className={`${cardClass} p-3.5`}>
+              <div className="mb-2.5 flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Current Singles</p>
+                <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-slate-300">{singleBets.length}</span>
+              </div>
+              {singleBets.length === 0 ? (
+                <p className="text-xs text-slate-500">No single bets placed yet.</p>
+              ) : (
+                <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                  {singleBets.slice(0, 10).map((bet) => (
+                    <div key={bet.id} className="rounded-xl border border-slate-700/80 bg-gradient-to-b from-slate-900 to-slate-900/70 p-2.5 shadow-[0_1px_0_rgba(148,163,184,0.12)_inset]">
+                      <p className="text-sm font-semibold text-slate-100 truncate">{bet.optionLabel}</p>
+                      <p className="mt-0.5 text-[11px] text-slate-400 truncate">{bet.marketTitle}</p>
+                      <div className="mt-2 flex items-center justify-between text-[11px]">
+                        <span className="rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 font-semibold text-violet-200">Stake ${bet.stake.toFixed(2)}</span>
+                        <span className="font-semibold text-emerald-300">To win ${bet.potentialPayout.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
 
@@ -280,7 +331,7 @@ export const BetSlip: React.FC<BetSlipProps> = ({
               <button
                 type="button"
                 disabled={parlayPlaceDisabled}
-                onClick={() => onPlaceBet(stake)}
+                onClick={() => onPlaceBet(stake, 'parlay')}
                 className="mt-3 w-full bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-violet-600/20 active:scale-[0.99] transition-all text-xs uppercase tracking-wide"
               >
                 PLACE BET
@@ -307,13 +358,60 @@ export const BetSlip: React.FC<BetSlipProps> = ({
                 </div>
               ))}
             </div>
+
+            <div className={`${cardClass} p-3.5`}>
+              <div className="mb-2.5 flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Current Parlays</p>
+                <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-slate-300">{parlayBets.length}</span>
+              </div>
+              {parlayBets.length === 0 ? (
+                <p className="text-xs text-slate-500">No parlay bets placed yet.</p>
+              ) : (
+                <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                  {parlayBets.slice(0, 10).map((bet) => (
+                    <div key={bet.id} className="rounded-xl border border-slate-700/80 bg-gradient-to-b from-slate-900 to-slate-900/70 p-2.5 shadow-[0_1px_0_rgba(148,163,184,0.12)_inset]">
+                      <p className="text-sm font-semibold text-slate-100 truncate">{bet.optionLabel}</p>
+                      <p className="mt-0.5 text-[11px] text-slate-400 truncate">{bet.marketTitle}</p>
+                      <div className="mt-2 flex items-center justify-between text-[11px]">
+                        <span className="rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 font-semibold text-violet-200">Stake ${bet.stake.toFixed(2)}</span>
+                        <span className="font-semibold text-emerald-300">To win ${bet.potentialPayout.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : tab === 'PARLAYS' ? (
-          <div
-            className={`${cardClass} px-4 py-10 text-center text-slate-400 mb-4 lg:min-h-[28vh] flex flex-col items-center justify-center`}
-          >
-            <p className="text-sm font-semibold text-slate-300 mb-1">No parlay legs yet</p>
-            <p className="text-xs text-slate-500">Add two or more picks to build a parlay.</p>
+          <div className="mb-4 flex flex-col gap-3">
+            <div
+              className={`${cardClass} px-4 py-10 text-center text-slate-400 lg:min-h-[28vh] flex flex-col items-center justify-center`}
+            >
+              <p className="text-sm font-semibold text-slate-300 mb-1">No parlay legs yet</p>
+              <p className="text-xs text-slate-500">Add two or more picks to build a parlay.</p>
+            </div>
+            <div className={`${cardClass} p-3.5`}>
+              <div className="mb-2.5 flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Current Parlays</p>
+                <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-slate-300">{parlayBets.length}</span>
+              </div>
+              {parlayBets.length === 0 ? (
+                <p className="text-xs text-slate-500">No parlay bets placed yet.</p>
+              ) : (
+                <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                  {parlayBets.slice(0, 10).map((bet) => (
+                    <div key={bet.id} className="rounded-xl border border-slate-700/80 bg-gradient-to-b from-slate-900 to-slate-900/70 p-2.5 shadow-[0_1px_0_rgba(148,163,184,0.12)_inset]">
+                      <p className="text-sm font-semibold text-slate-100 truncate">{bet.optionLabel}</p>
+                      <p className="mt-0.5 text-[11px] text-slate-400 truncate">{bet.marketTitle}</p>
+                      <div className="mt-2 flex items-center justify-between text-[11px]">
+                        <span className="rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 font-semibold text-violet-200">Stake ${bet.stake.toFixed(2)}</span>
+                        <span className="font-semibold text-emerald-300">To win ${bet.potentialPayout.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
       </div>

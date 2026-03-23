@@ -27,6 +27,7 @@ export interface Bet {
   marketId: string;
   marketTitle: string;
   optionLabel: string;
+  betType?: 'single' | 'parlay';
   stake: number;
   odds: number;
   potentialPayout: number;
