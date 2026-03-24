@@ -98,25 +98,11 @@ export function useBettingViewModel() {
       parlayLegs,
     };
 
-    setIsPlacingBet(true);
-    void placeSingleBet(uid, newBet).then((result) => {
-      if (!result.success) {
-        if (result.error === 'INSUFFICIENT_FUNDS') {
-          setBonusMessage('Insufficient funds for this bet.');
-          setTimeout(() => setBonusMessage(null), 3000);
-        }
-        return;
-      }
-
-      setBalance(result.newBalance);
-      localStorage.setItem('userMoney', String(result.newBalance));
-      setActiveBets((prev) => [newBet, ...prev]);
-      setBetSelection(null);
-      setParlaySelections([]);
-    }).finally(() => {
-      setIsPlacingBet(false);
-    });
-  }, [betSelection, isPlacingBet, balance, parlaySelections]);
+    void addBet(uid, newBet);
+    void changeUserMoney(uid, -stake);
+    setActiveBets((prev) => [newBet, ...prev]);
+    setBetSelection(null);
+  }, [betSelection]);
 
   const handleDailyBonus = useCallback(() => {
     if (!dailyBonusAvailable) {
@@ -132,7 +118,6 @@ export function useBettingViewModel() {
     localStorage.setItem('hasDailyBonus', 'false');
 
     void changeUserMoney(uid, DAILY_BONUS_AMOUNT).then(() => {
-      setBalance((prev) => prev + DAILY_BONUS_AMOUNT);
       setBonusMessage(`+$${DAILY_BONUS_AMOUNT} added to your wallet!`);
     });
     void claimedDaily(uid);
