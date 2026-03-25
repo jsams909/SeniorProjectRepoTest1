@@ -1,5 +1,5 @@
 import { setDoc, doc, getDoc, getDocs, onSnapshot, collection, Timestamp, DocumentData, FieldValue} from "firebase/firestore";
-import {APP, db, FIRESTORE} from "@/models/constants.ts";
+import { db } from "@/models/constants.ts";
 import {Bet, Friend, LeaderboardEntry} from "@/models";
 import firebase from "firebase/compat/app";
 import DocumentReference = firebase.firestore.DocumentReference;
@@ -272,12 +272,23 @@ export async function addFriend(name: string, currUid: string) {
         }
     }
 
-    console.log(firebase.app)
+    const docRef = doc(db, "userInfo", currUid);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+        const data = docSnap.data();
+        const friendsList : string[] = data["friends"];
+        if (friendsList.includes(friendId)) {
+            console.log("user is already part of friend list")
+            return;
+        }
+        friendsList.push(friendId)
+        await setDoc(doc(db, "userInfo", currUid), {
+            friends: friendsList
+        }, {merge: true});
+    }
 
 
-    await setDoc(doc(db, "userInfo", currUid), {
-        friends: [friendId]
-    }, {merge: true});
 
 
 }
