@@ -88,7 +88,7 @@ export const SocialView: React.FC<SocialViewProps> = ({ friends, activities, onC
         </div>
 
         <div className="space-y-4">
-          {activities.map(activity => (
+          {activities?.map(activity => (
             <div key={activity.id} className="glass-card rounded-2xl p-4 flex gap-4 border-slate-800 hover:bg-slate-800/20 transition-all">
               <div className="w-10 h-10 rounded-xl bg-slate-800 flex-shrink-0 flex items-center justify-center font-bold text-slate-400">
                 {activity.userAvatar}

@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { Friend, LeaderboardEntry } from '../models';
+import type {Friend, LeaderboardEntry, SocialActivity} from '../models';
 import { useBettingViewModel } from './useBettingViewModel';
 import { useMarketsViewModel } from './useMarketsViewModel';
 import { MOCK_FRIENDS, MOCK_ACTIVITY } from '../models/constants';
-import {getFriends, getTopUsers} from '../services/dbOps';
+import {getFriends, getTopUsers, loadCommunityActivity} from '../services/dbOps';
 
 /**
  * Composes betting + markets + auth for DashboardView.
@@ -22,12 +22,16 @@ export function useDashboardViewModel(auth: AuthViewModel) {
   const markets = useMarketsViewModel();
 
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [activities, setActivities] = useState<SocialActivity[]>([])
   const [view, setView] = useState<DashboardView>('MARKETS');
   const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
 
   useEffect(() => {
-    getFriends(localStorage.uid).then((rows) => {
-      setFriends(rows)
+    getFriends(localStorage.uid).then((list) => {
+      setFriends(list)
+    })
+    loadCommunityActivity().then((list) => {
+      setActivities(list)
     })
     console.log(friends)
     let cancelled = false;
@@ -60,6 +64,6 @@ export function useDashboardViewModel(auth: AuthViewModel) {
     handleChallenge,
     leaderboardEntries,
     friends: friends,
-    activity: MOCK_ACTIVITY,
+    activity: activities,
   };
 }

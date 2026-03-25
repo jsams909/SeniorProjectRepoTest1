@@ -1,6 +1,6 @@
 import { setDoc, doc, getDoc, getDocs, onSnapshot, collection, Timestamp, DocumentData, FieldValue} from "firebase/firestore";
 import { db } from "@/models/constants.ts";
-import {Bet, Friend, LeaderboardEntry} from "@/models";
+import {Bet, Friend, LeaderboardEntry, SocialActivity} from "@/models";
 import firebase from "firebase/compat/app";
 import DocumentReference = firebase.firestore.DocumentReference;
 export var currBets = new Array<Bet>;
@@ -210,7 +210,6 @@ export async function getBets(uid: string): Promise<Bet[]> {
                 console.log(error)
             }
         } else {
-            console.log("Bet was found invalid.")
         }
     })
     return betList
@@ -267,7 +266,6 @@ export async function addFriend(name: string, currUid: string) {
         friendId = docSnap.id
         data = docSnap.data();
         if (data["name"] == name) {
-            console.log("found user")
             break;
         }
     }
@@ -279,7 +277,6 @@ export async function addFriend(name: string, currUid: string) {
         const data = docSnap.data();
         const friendsList : string[] = data["friends"];
         if (friendsList.includes(friendId)) {
-            console.log("user is already part of friend list")
             return;
         }
         friendsList.push(friendId)
@@ -292,6 +289,44 @@ export async function addFriend(name: string, currUid: string) {
 
 
 }
+
+export async function loadCommunityActivity() : Promise<SocialActivity[]> {
+    const querySnapshot = await getDocs(collection(db, "bets"))
+    var socialActivityList : SocialActivity[] = []
+
+    for (const docSnap of querySnapshot.docs) {
+        const data = docSnap.data();
+
+        var isSingleBet = (data["betType"] == undefined);
+        if (!isSingleBet) {
+            console.log("throwing out parlay document")
+            continue;
+        }
+
+        const documentReference = doc(db, "userInfo", data["userID"])
+        const documentSnapshot = await getDoc(documentReference);
+
+        const userData = documentSnapshot.data();
+
+        if (userData == undefined) {
+            continue;
+        }
+
+        const newSocialActivity : SocialActivity = {
+            id: docSnap.id,
+            userId: documentSnapshot.id,
+            userName: userData["name"],
+            userAvatar: userData["name"]?.slice(0, 2),
+            action: "placed a bet on",
+            target: data["marketTitle"],
+            timestamp: ""
+        }
+        socialActivityList.push(newSocialActivity)
+    }
+    console.log(socialActivityList)
+    return socialActivityList
+}
+
 export async function getFriends(uid : string) : Promise<Friend[]> {
     const documentReference = doc(db, "userInfo", uid);
     const documentSnapshot = await getDoc(documentReference);
@@ -317,8 +352,6 @@ export async function getFriends(uid : string) : Promise<Friend[]> {
                     lastActive: "dont care",
                     privacyEnabled: false
                 })
-                console.log(friendsList)
-                console.log(friendsListAsString)
             }
         }
     }
