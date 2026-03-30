@@ -111,6 +111,7 @@ function sportKeyToLeague(sportKey: string): string {
 function transformEventToMarket(event: OddsApiEvent): Market | null {
   const bookmaker = event.bookmakers?.[0];
   if (!bookmaker) return null;
+  sport_key: event.sport_key
 
   const h2hMarket = bookmaker.markets.find(m => m.key === 'h2h' || m.key === 'outrights');
   if (!h2hMarket?.outcomes?.length) return null;

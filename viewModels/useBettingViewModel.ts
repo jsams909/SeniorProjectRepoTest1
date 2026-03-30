@@ -16,7 +16,7 @@ import {
  * Loads balance from Firestore and re-subscribes whenever the active user changes.
  */
 
-export function useBettingViewModel() {
+export function useBettingViewModel(p0: string) {
   type BetSelection = { market: Market; option: MarketOption };
 
   const [balance, setBalance] = useState<number>(() => {
@@ -87,9 +87,11 @@ export function useBettingViewModel() {
       ? parlaySelections.map((s) => ({
           marketId: s.market.id,
           marketTitle: s.market.title,
+          sportKey:    s.market.sport_key,
           optionId: s.option.id,
           optionLabel: s.option.label,
           odds: s.option.odds,
+          marketKey:   s.option.marketKey ?? 'h2h',
         }))
       : undefined;
 
@@ -104,10 +106,11 @@ export function useBettingViewModel() {
       potentialPayout: stake * resolvedOdds,
       placedAt: new Date(),
       parlayLegs,
+      eventId:         isParlayBet ? undefined : betSelection.market.id,
+      sportKey:        isParlayBet ? undefined : betSelection.market.sport_key,
     };
 
-    void addBet(uid, newBet);
-    void changeUserMoney(uid, -stake);
+    void placeSingleBet(uid, newBet);
     setActiveBets((prev) => [newBet, ...prev]);
     setBetSelection(null);
   }, [betSelection]);
