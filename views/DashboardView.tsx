@@ -165,7 +165,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
     if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
     return `${words[0][0] ?? ''}${words[1][0] ?? ''}`.toUpperCase();
   };
-  
+
   /**
    * MLB / NHL: Simple Icons via jsDelivr (stable SVG marks).
    * Soccer: classic association-football ball artwork (distinct from generic “football” clip).

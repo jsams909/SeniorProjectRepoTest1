@@ -1,9 +1,7 @@
-import { setDoc, doc, getDoc, getDocs, onSnapshot, collection, Timestamp, DocumentData, FieldValue} from "firebase/firestore";
+import { setDoc, doc, getDoc, getDocs, onSnapshot, collection, Timestamp, runTransaction, deleteField, query, where, writeBatch, increment } from "firebase/firestore";
 import { db } from "@/models/constants.ts";
-import {Bet, Friend, LeaderboardEntry, SocialActivity} from "@/models";
-import firebase from "firebase/compat/app";
-import DocumentReference = firebase.firestore.DocumentReference;
-import { betList } from "@/services/authService.ts";
+import { Bet, LeaderboardEntry, ParlayLeg, BetStatus } from "@/models";
+
 export var currBets = new Array<Bet>;
 
 export var allBets = new Array<Bet>;
@@ -55,8 +53,7 @@ export async function getUserRatio(uid: string): Promise<number[]> {
  * @param uid A user's Firebase Authentication ID.
  * @author Aidan Rodriguez
  */
-export async function getUserMoney(uid: string): Promise<number> {
-
+export async function getUserMoney(uid : string) : Promise<number> {
     const documentReference = doc(db, "userInfo", uid);
     const documentSnapshot = await getDoc(documentReference);
 
@@ -115,8 +112,7 @@ export async function changeUserMoney(uid: string, amount: number) {
     const newMoney = ((await getUserMoney(uid)) + amount);
     await setDoc(doc(db, "userInfo", uid), {
         money: newMoney
-
-    }, {merge: true});
+    }, { merge: true });
 }
 
 export type ListenForChangeCallback = (data: { money: number; hasDailyBonus: boolean }) => void;
@@ -140,8 +136,8 @@ export function listenForChange(uid: string, onUpdate?: ListenForChangeCallback)
         const claimStamp = data.lastClaim ?? data.LastClaim;
         const hasDailyBonus = claimStamp
             ? claimStamp.toDate().getDate() !== currDate.getDate() ||
-              claimStamp.toDate().getMonth() !== currDate.getMonth() ||
-              claimStamp.toDate().getFullYear() !== currDate.getFullYear()
+            claimStamp.toDate().getMonth() !== currDate.getMonth() ||
+            claimStamp.toDate().getFullYear() !== currDate.getFullYear()
             : true;
         localStorage.setItem("hasDailyBonus", hasDailyBonus ? "true" : "false");
 
@@ -152,8 +148,7 @@ export function listenForChange(uid: string, onUpdate?: ListenForChangeCallback)
 /**
  * Gets the last time a user claimed their daily bonus.
  * @param uid A user's Firebase Authentication ID.
- * @return The last time a user claimed their daily bonus as a Timestamp object. It should be also noted that this object
- * is returned as a Promise.
+ * @return The last time a user claimed their daily bonus as a Timestamp object.
  * @author Aidan Rodriguez
  */
 export async function getLastDaily(uid: string) {
@@ -177,8 +172,6 @@ type NormalizedUserInfo = {
 
 /**
  * Normalizes legacy / malformed userInfo documents.
- * - Migrates LastClaim -> lastClaim
- * - Coerces money/wins/losses to finite numbers
  */
 export async function normalizeUserInfoDoc(uid: string): Promise<NormalizedUserInfo | null> {
     const userRef = doc(db, "userInfo", uid);
@@ -186,16 +179,12 @@ export async function normalizeUserInfoDoc(uid: string): Promise<NormalizedUserI
     if (!snap.exists()) return null;
 
     const data = snap.data();
-    const moneyRaw = data.money;
-    const winsRaw = data.wins;
-    const lossesRaw = data.losses;
-    const lastClaimRaw = data.lastClaim ?? data.LastClaim;
-
-    const money = Number.isFinite(Number(moneyRaw)) ? Number(moneyRaw) : 0;
-    const wins = Number.isFinite(Number(winsRaw)) ? Number(winsRaw) : 0;
-    const losses = Number.isFinite(Number(lossesRaw)) ? Number(lossesRaw) : 0;
+    const money = Number.isFinite(Number(data.money)) ? Number(data.money) : 0;
+    const wins = Number.isFinite(Number(data.wins)) ? Number(data.wins) : 0;
+    const losses = Number.isFinite(Number(data.losses)) ? Number(data.losses) : 0;
 
     const fallbackDate = new Date(1900, 0, 1);
+    const lastClaimRaw = data.lastClaim ?? data.LastClaim;
     const lastClaim =
         lastClaimRaw && typeof lastClaimRaw.toDate === "function"
             ? Timestamp.fromDate(lastClaimRaw.toDate())
@@ -203,40 +192,43 @@ export async function normalizeUserInfoDoc(uid: string): Promise<NormalizedUserI
 
     await setDoc(
         userRef,
-        {
-            money,
-            wins,
-            losses,
-            lastClaim,
-            LastClaim: deleteField(),
-        },
+        { money, wins, losses, lastClaim, LastClaim: deleteField() },
         { merge: true }
     );
 
     return { money, wins, losses, lastClaim };
 }
 
+// ─────────────────────────────────────────────────────────────────
+//  BETTING
+// ─────────────────────────────────────────────────────────────────
+
 /**
  * Adds a bet to the Firestore database associated with a user.
- * @param uid The user ID that the added bet will be associated with.
- * @param bet The Bet object that will be uploaded to Firestore.
+ * Used for non-transactional writes (e.g. mock/test bets).
+ * For real bet placement use placeSingleBet() instead.
  * @author Aidan Rodriguez
  */
 export async function addBet(uid: string, bet: Bet) {
     await setDoc(doc(db, "bets", bet.id), {
-        userID: uid,
-        marketId: bet.marketId,
-        marketTitle: bet.marketTitle,
-        optionLabel: bet.optionLabel,
-        betType: bet.betType ?? "single",
-        parlayLegs: bet.parlayLegs ?? [],
-        legCount: bet.parlayLegs?.length ?? (bet.betType === "parlay" ? 0 : 1),
-        stake: bet.stake,
-        odds: bet.odds,
+        userID:          uid,
+        marketId:        bet.marketId,
+        marketTitle:     bet.marketTitle,
+        optionLabel:     bet.optionLabel,
+        betType:         bet.betType ?? "single",
+        parlayLegs:      bet.parlayLegs ?? [],
+        legCount:        bet.parlayLegs?.length ?? (bet.betType === "parlay" ? 0 : 1),
+        stake:           bet.stake,
+        odds:            bet.odds,
         potentialPayout: bet.potentialPayout,
-        placedAt: bet.placedAt
-    })
-    currBets.push(bet)
+        placedAt:        bet.placedAt,
+        // ── Settlement fields ──────────────────────────────────
+        status:          "PENDING",
+        eventId:         bet.eventId  ?? bet.marketId,   // Odds API event ID
+        sportKey:        bet.sportKey ?? "",              // e.g. "basketball_nba"
+        // ──────────────────────────────────────────────────────
+    });
+    currBets.push(bet);
 }
 
 export type PlaceSingleBetResult =
@@ -244,8 +236,9 @@ export type PlaceSingleBetResult =
     | { success: false; error: "USER_NOT_FOUND" | "INVALID_STAKE" | "INSUFFICIENT_FUNDS" | "UNKNOWN" };
 
 /**
- * Places a single bet and debits funds atomically in Firestore.
- * This avoids race conditions from separate read/write calls.
+ * Places a single or parlay bet and debits funds atomically in Firestore.
+ * Avoids race conditions from separate read/write calls.
+ * @author Aidan Rodriguez (updated for settlement)
  */
 export async function placeSingleBet(uid: string, bet: Bet): Promise<PlaceSingleBetResult> {
     if (!Number.isFinite(bet.stake) || bet.stake <= 0) {
@@ -255,35 +248,47 @@ export async function placeSingleBet(uid: string, bet: Bet): Promise<PlaceSingle
     try {
         const newBalance = await runTransaction(db, async (transaction) => {
             const userRef = doc(db, "userInfo", uid);
-            const betRef = doc(db, "bets", bet.id);
+            const betRef  = doc(db, "bets", bet.id);
 
             const userSnap = await transaction.get(userRef);
-            if (!userSnap.exists()) {
-                throw new Error("USER_NOT_FOUND");
-            }
+            if (!userSnap.exists()) throw new Error("USER_NOT_FOUND");
 
             const currentMoney = Number(userSnap.data().money) || 0;
-            if (currentMoney < bet.stake) {
-                throw new Error("INSUFFICIENT_FUNDS");
-            }
+            if (currentMoney < bet.stake) throw new Error("INSUFFICIENT_FUNDS");
 
             const nextMoney = currentMoney - bet.stake;
 
             transaction.set(betRef, {
-                userID: uid,
-                marketId: bet.marketId,
-                marketTitle: bet.marketTitle,
-                optionLabel: bet.optionLabel,
-                betType: bet.betType ?? "single",
-                parlayLegs: bet.parlayLegs ?? [],
-                legCount: bet.parlayLegs?.length ?? (bet.betType === "parlay" ? 0 : 1),
-                stake: bet.stake,
-                odds: bet.odds,
+                userID:          uid,
+                marketId:        bet.marketId,
+                marketTitle:     bet.marketTitle,
+                optionLabel:     bet.optionLabel,
+                betType:         bet.betType ?? "single",
+                // For parlays, persist each leg with its sportKey and marketKey
+                // so the settlement service can resolve each leg independently.
+                parlayLegs:      (bet.parlayLegs ?? []).map((leg: ParlayLeg) => ({
+                    marketId:    leg.marketId,
+                    marketTitle: leg.marketTitle,
+                    sportKey:    leg.sportKey   ?? "",   // ← needed for settlement
+                    optionId:    leg.optionId,
+                    optionLabel: leg.optionLabel,
+                    odds:        leg.odds,
+                    marketKey:   leg.marketKey  ?? "h2h", // ← needed for spread/total resolution
+                    result:      "PENDING",
+                })),
+                legCount:        bet.legCount ?? (bet.betType === "parlay" ? (bet.parlayLegs?.length ?? 0) : 1),
+                stake:           bet.stake,
+                odds:            bet.odds,
                 potentialPayout: bet.potentialPayout,
-                placedAt: Timestamp.fromDate(bet.placedAt),
+                placedAt:        Timestamp.fromDate(bet.placedAt),
+                // ── Settlement fields ──────────────────────────────────
+                status:          "PENDING",
+                eventId:         bet.eventId  ?? bet.marketId,   // singles only (parlay uses legs)
+                sportKey:        bet.sportKey ?? "",              // singles only
+                // ──────────────────────────────────────────────────────
             });
-            transaction.set(userRef, { money: nextMoney }, { merge: true });
 
+            transaction.set(userRef, { money: nextMoney }, { merge: true });
             return nextMoney;
         });
 
@@ -291,7 +296,7 @@ export async function placeSingleBet(uid: string, bet: Bet): Promise<PlaceSingle
         return { success: true, newBalance };
     } catch (error) {
         const message = error instanceof Error ? error.message : "";
-        if (message === "USER_NOT_FOUND") return { success: false, error: "USER_NOT_FOUND" };
+        if (message === "USER_NOT_FOUND")    return { success: false, error: "USER_NOT_FOUND" };
         if (message === "INSUFFICIENT_FUNDS") return { success: false, error: "INSUFFICIENT_FUNDS" };
         return { success: false, error: "UNKNOWN" };
     }
@@ -300,46 +305,134 @@ export async function placeSingleBet(uid: string, bet: Bet): Promise<PlaceSingle
 /**
  * Returns all bets associated with a user ID.
  * @param uid The user ID that will be part of the request to Firestore for the data.
- * @return Returns an Array of bets from Firestore associated with the user ID. If no bets are found, an empty Array is
- * returned. It should be noted that this Array is returned as a Promise.
- * @author Aidan Rodriguez
+ * @author Aidan Rodriguez (updated: uses query instead of full collection scan)
  */
 export async function getBets(uid: string): Promise<Bet[]> {
-    var betList = new Array()
-    const querySnapshot = await getDocs(collection(db, "bets"));
-    querySnapshot.forEach((doc) => {
-        if (doc.data().userID == uid) {
-            const validBet: Bet = {
-                id: doc.id,
-                marketId: doc.data().marketId,
-                marketTitle: doc.data().marketTitle,
-                optionLabel: doc.data().optionLabel,
-                betType: doc.data().betType === "parlay" ? "parlay" : "single",
-                stake: doc.data().stake,
-                odds: doc.data().odds,
-                potentialPayout: doc.data().potentialPayout,
-                placedAt: doc.data().placedAt.toDate(),
-                parlayLegs: Array.isArray(doc.data().parlayLegs)
-                    ? doc.data().parlayLegs.map((leg: any) => ({
-                        marketId: String(leg.marketId ?? ""),
-                        marketTitle: String(leg.marketTitle ?? ""),
-                        optionId: String(leg.optionId ?? ""),
-                        optionLabel: String(leg.optionLabel ?? ""),
-                        odds: Number(leg.odds) || 0,
-                    }))
-                    : undefined,
-            }
-            try {
+    const betList: Bet[] = [];
+    // CHANGED: query filter instead of scanning every bet in the collection
+    const q = query(collection(db, "bets"), where("userID", "==", uid));
+    const querySnapshot = await getDocs(q);
 
-                betList.push(validBet as Bet)
-            } catch (error) {
-                console.log(error)
-            }
-        } else {
+    querySnapshot.forEach((d) => {
+        const data = d.data();
+        const validBet: Bet = {
+            id:              d.id,
+            userID:          data.userID,
+            marketId:        data.marketId,
+            marketTitle:     data.marketTitle,
+            optionLabel:     data.optionLabel,
+            betType:         data.betType === "parlay" ? "parlay" : "single",
+            stake:           data.stake,
+            odds:            data.odds,
+            potentialPayout: data.potentialPayout,
+            placedAt:        data.placedAt.toDate(),
+            legCount:        data.legCount ?? 1,
+            // CHANGED: now maps sportKey and marketKey so settlement can use them
+            parlayLegs: Array.isArray(data.parlayLegs)
+                ? data.parlayLegs.map((leg: any): ParlayLeg => ({
+                    marketId:    String(leg.marketId    ?? ""),
+                    marketTitle: String(leg.marketTitle ?? ""),
+                    sportKey:    String(leg.sportKey    ?? ""),   // ← added
+                    optionId:    String(leg.optionId    ?? ""),
+                    optionLabel: String(leg.optionLabel ?? ""),
+                    odds:        Number(leg.odds)        || 0,
+                    marketKey:   String(leg.marketKey   ?? "h2h"), // ← added
+                    result:      leg.result ?? "PENDING",
+                }))
+                : [],
+            // Settlement fields
+            status:    (data.status   ?? "PENDING") as BetStatus,
+            eventId:   data.eventId,
+            sportKey:  data.sportKey,
+            settledAt: data.settledAt?.toDate(),
+        };
+        try {
+            betList.push(validBet);
+        } catch (error) {
+            console.log(error);
         }
-    })
-    return betList
+    });
+
+    return betList;
 }
+
+/**
+ * Returns all PENDING bets across all users.
+ * Called by the settlement cron job.
+ */
+export async function getPendingBets(): Promise<Bet[]> {
+    const betList: Bet[] = [];
+    const q = query(collection(db, "bets"), where("status", "==", "PENDING"));
+    const querySnapshot = await getDocs(q);
+
+    querySnapshot.forEach((d) => {
+        const data = d.data();
+        betList.push({
+            id:              d.id,
+            userID:          data.userID,
+            marketId:        data.marketId,
+            marketTitle:     data.marketTitle,
+            optionLabel:     data.optionLabel,
+            betType:         data.betType === "parlay" ? "parlay" : "single",
+            stake:           data.stake,
+            odds:            data.odds,
+            potentialPayout: data.potentialPayout,
+            placedAt:        data.placedAt.toDate(),
+            legCount:        data.legCount ?? 1,
+            parlayLegs: Array.isArray(data.parlayLegs)
+                ? data.parlayLegs.map((leg: any): ParlayLeg => ({
+                    marketId:    String(leg.marketId    ?? ""),
+                    marketTitle: String(leg.marketTitle ?? ""),
+                    sportKey:    String(leg.sportKey    ?? ""),
+                    optionId:    String(leg.optionId    ?? ""),
+                    optionLabel: String(leg.optionLabel ?? ""),
+                    odds:        Number(leg.odds)        || 0,
+                    marketKey:   String(leg.marketKey   ?? "h2h"),
+                    result:      leg.result ?? "PENDING",
+                }))
+                : [],
+            status:   "PENDING",
+            eventId:  data.eventId,
+            sportKey: data.sportKey,
+        });
+    });
+
+    return betList;
+}
+
+/**
+ * Marks a bet as WON or LOST and updates the user's wallet and record atomically.
+ * Called by the settlement service after a game is confirmed completed.
+ */
+export async function settleBet(bet: Bet, result: "WON" | "LOST"): Promise<void> {
+    const batch = writeBatch(db);
+
+    // 1. Update bet status
+    batch.update(doc(db, "bets", bet.id), {
+        status:    result,
+        settledAt: Timestamp.now(),
+    });
+
+    // 2. Update user wallet and record
+    // NOTE: collection is "userInfo" (not "users")
+    const userRef = doc(db, "userInfo", bet.userID);
+    if (result === "WON") {
+        batch.update(userRef, {
+            money:  increment(bet.potentialPayout),
+            wins:   increment(1),
+        });
+    } else {
+        batch.update(userRef, {
+            losses: increment(1),
+        });
+    }
+
+    await batch.commit();
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  LEADERBOARD
+// ─────────────────────────────────────────────────────────────────
 
 export async function getTopUsers(): Promise<LeaderboardEntry[]> {
     const topUserList: LeaderboardEntry[] = [];
@@ -350,13 +443,13 @@ export async function getTopUsers(): Promise<LeaderboardEntry[]> {
         const name = typeof data.name === "string" ? data.name : "";
         if (!name.trim()) continue;
 
-        const wins = Number(data.wins) || 0;
+        const wins   = Number(data.wins)   || 0;
         const losses = Number(data.losses) || 0;
-        let winRate = 0;
+        let winRate  = 0;
         if (losses === 0) {
             winRate = wins > 0 ? 100 : 0;
         } else {
-            winRate = (wins / losses) * 100;
+            winRate = (wins / (wins + losses)) * 100;  // FIXED: was wins/losses (wrong formula)
         }
         if (!Number.isFinite(winRate)) winRate = 0;
         winRate = Math.min(100, Math.round(winRate));
@@ -364,22 +457,18 @@ export async function getTopUsers(): Promise<LeaderboardEntry[]> {
         const money = typeof data.money === "number" ? data.money : Number(data.money) || 0;
 
         topUserList.push({
-            id: docSnap.id,
+            id:            docSnap.id,
             name,
-            avatar: name.slice(0, 2).toUpperCase(),
-            netWorth: money,
+            avatar:        name.slice(0, 2).toUpperCase(),
+            netWorth:      money,
             winRate,
-            rank: 1,
+            rank:          1,
             isCurrentUser: false,
         });
     }
 
     topUserList.sort((a, b) => b.netWorth - a.netWorth);
-    var rankCounter = 0;
-    for (const user of topUserList) {
-        rankCounter++
-        topUserList[rankCounter - 1].rank = rankCounter
-    }
+    topUserList.forEach((user, i) => { user.rank = i + 1; });
 
     return topUserList;
 }

@@ -6,6 +6,7 @@ export enum MarketType {
 
 export interface Market {
   id: string;
+  sport_key: string;        // ← ADDED: Odds API sport key e.g. "basketball_nba"
   title: string;
   subtitle: string;
   category: string;
@@ -22,8 +23,24 @@ export interface MarketOption {
   marketKey?: 'h2h' | 'spreads' | 'totals' | 'outrights';
 }
 
+// ── NEW: one leg inside a parlay ─────────────────────────────────
+export interface ParlayLeg {
+  marketId: string;
+  marketTitle: string;
+  sportKey: string;
+  optionId: string;
+  optionLabel: string;
+  odds: number;
+  marketKey: string;
+  result?: 'WON' | 'LOST' | 'PUSH' | 'PENDING';
+}
+
+// ── NEW: possible settlement states for a bet ────────────────────
+export type BetStatus = 'PENDING' | 'WON' | 'LOST' | 'PUSH' | 'CANCELLED';
+
 export interface Bet {
   id: string;
+  userID?: string;
   marketId: string;
   marketTitle: string;
   optionLabel: string;
@@ -32,13 +49,13 @@ export interface Bet {
   odds: number;
   potentialPayout: number;
   placedAt: Date;
-  parlayLegs?: Array<{
-    marketId: string;
-    marketTitle: string;
-    optionId: string;
-    optionLabel: string;
-    odds: number;
-  }>;
+  legCount?: number;            // ← ADDED
+  parlayLegs?: ParlayLeg[];     // ← UPDATED: was inline anonymous type, now ParlayLeg
+  // Settlement fields
+  status?: BetStatus;           // ← ADDED: undefined on old bets = treat as PENDING
+  eventId?: string;             // ← ADDED: Odds API event ID (singles only)
+  sportKey?: string;            // ← ADDED: e.g. "basketball_nba" (singles only)
+  settledAt?: Date;             // ← ADDED
 }
 
 export interface LeaderboardEntry {
