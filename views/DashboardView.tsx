@@ -162,7 +162,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
     if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
     return `${words[0][0] ?? ''}${words[1][0] ?? ''}`.toUpperCase();
   };
-  
+
   /**
    * MLB / NHL: Simple Icons via jsDelivr (stable SVG marks).
    * Soccer: classic association-football ball artwork (distinct from generic “football” clip).
@@ -265,7 +265,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
             </h2>
             <div className="space-y-4">
               {props.activeBets.length > 0 ? (
-                  props.activeBets.map(bet => (
+                props.activeBets.map(bet => (
                   <div key={bet.id} className="glass-card rounded-2xl p-6 border-slate-800 hover:border-slate-700 transition-all">
                     <div className="flex justify-between items-start mb-4">
                       <div>
@@ -273,13 +273,8 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
                         <h4 className="text-lg font-bold">Selected: {bet.optionLabel}</h4>
                         <p className="text-xs text-slate-500 mt-1">{bet.placedAt.toLocaleString()}</p>
                       </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase border ${
-                          bet.status === 'WON'  ? 'bg-green-500/10 text-green-400 border-green-500/20' :
-                              bet.status === 'LOST' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                                  'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                      }`}>
-  {bet.status === 'WON' ? 'Won' : bet.status === 'LOST' ? 'Lost' : 'Pending'}
-</span>                    </div>
+                      <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Pending Result</span>
+                    </div>
                     <div className="flex justify-between items-end border-t border-slate-800 pt-4">
                       <div className="grid grid-cols-2 gap-8">
                         <div>

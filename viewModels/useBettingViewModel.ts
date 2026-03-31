@@ -16,7 +16,7 @@ import {
  * Loads balance from Firestore and re-subscribes whenever the active user changes.
  */
 
-export function useBettingViewModel(p0: string) {
+export function useBettingViewModel() {
   type BetSelection = { market: Market; option: MarketOption };
 
   const [balance, setBalance] = useState<number>(() => {
@@ -57,10 +57,11 @@ export function useBettingViewModel(p0: string) {
       setActiveBets(bets);
     }).catch(() => undefined);
 
+    /*
     return listenForChange(uid, ({ money, hasDailyBonus }) => {
       setBalance(money);
       setDailyBonusAvailable(hasDailyBonus);
-    });
+    });*/
   }, [localStorage.getItem("userEmail")]);
 
   const handlePlaceBet = useCallback((stake: number, betType: 'single' | 'parlay' = 'single') => {
@@ -87,11 +88,9 @@ export function useBettingViewModel(p0: string) {
       ? parlaySelections.map((s) => ({
           marketId: s.market.id,
           marketTitle: s.market.title,
-          sportKey:    s.market.sport_key,
           optionId: s.option.id,
           optionLabel: s.option.label,
           odds: s.option.odds,
-          marketKey:   s.option.marketKey ?? 'h2h',
         }))
       : undefined;
 
@@ -106,11 +105,10 @@ export function useBettingViewModel(p0: string) {
       potentialPayout: stake * resolvedOdds,
       placedAt: new Date(),
       parlayLegs,
-      eventId:         isParlayBet ? undefined : betSelection.market.id,
-      sportKey:        isParlayBet ? undefined : betSelection.market.sport_key,
     };
 
-    void placeSingleBet(uid, newBet);
+    void addBet(uid, newBet);
+    void changeUserMoney(uid, -stake);
     setActiveBets((prev) => [newBet, ...prev]);
     setBetSelection(null);
   }, [betSelection]);

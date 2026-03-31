@@ -46,6 +46,8 @@ export function useDashboardViewModel(auth: AuthViewModel) {
     alert(`Challenge request sent to ${friend.name}! Head-to-head competition initiated.`);
   }, []);
 
+
+
   return {
     auth,
     betting,
