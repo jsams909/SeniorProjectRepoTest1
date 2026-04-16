@@ -385,7 +385,11 @@ export async function placeSingleBet(uid: string, bet: Bet, boost: BoostType | n
                 const field = boost === 'double_payout' ? 'boosts.doublePayoutUsed' : 'boosts.moneyBackUsed';
                 userUpdate[field] = true;
             }
-            transaction.set(userRef, userUpdate, { merge: true });
+            transaction.update(userRef, { money: nextMoney });
+            if (boost) {
+                const field = boost === 'double_payout' ? 'boosts.doublePayoutUsed' : 'boosts.moneyBackUsed';
+                transaction.update(userRef, { [field]: true });
+            }
             return nextMoney;
         });
 
@@ -644,7 +648,7 @@ export async function placeFreeBet(
                 ? 1 + odds / 100
                 : 1 + 100 / Math.abs(odds))
         ).toFixed(2));
-
+        // console.log('placing bet with boost:', boost);
         await runTransaction(db, async (transaction) => {
             const userRef = doc(db, "userInfo", uid);
             const userSnap = await transaction.get(userRef);

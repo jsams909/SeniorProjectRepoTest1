@@ -86,7 +86,7 @@ interface DashboardViewProps {
   leaderboardEntries: LeaderboardEntry[];
   friends: Friend[];
   activity: SocialActivity[];
-  onPlaceBet: (stake: number, betType?: 'single' | 'parlay') => void;
+  onPlaceBet: (stake: number, betType?: 'single' | 'parlay', boost?: BoostType | null, onBoostUsed?: () => void) => void;
   onClearBet: () => void;
   onSelectBet: (market: Market, option: MarketOption) => void;
   onDailyBonus: () => void;
@@ -140,6 +140,12 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
 
   // ── Boost state — lives here so BetSlip and BoostsCard share it ─
   const [activeBoost, setActiveBoost] = useState<BoostType | null>(null);
+
+  const handlePlaceBetWithBoost = (stake: number, betType?: 'single' | 'parlay') => {
+    console.log('handlePlaceBetWithBoost called, activeBoost:', activeBoost);
+    onPlaceBet(stake, betType, activeBoost, () => setActiveBoost(null));
+  };
+
 
   // ── Grab uid once for sidebar cards ────────────────────────────
   const uid = localStorage.getItem('uid') ?? '';
@@ -733,7 +739,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
                 parlaySelections={parlaySelections}
                 activeBets={props.activeBets}
                 onClear={onClearBet}
-                onPlaceBet={onPlaceBet}
+                onPlaceBet={handlePlaceBetWithBoost}
                 onSelectBet={onSelectBet}
                 balance={balance}
                 activeBoost={activeBoost}

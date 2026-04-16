@@ -65,6 +65,7 @@ export function useBettingViewModel() {
       activeBoost: BoostType | null = null,
       onBoostUsed?: () => void,
   ) => {
+    console.log('handlePlaceBet called, activeBoost:', activeBoost);
     if (!betSelection || isPlacingBet) return;
 
     const uid = localStorage.getItem('uid');
