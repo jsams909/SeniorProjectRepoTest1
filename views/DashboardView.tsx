@@ -34,7 +34,7 @@ import { BetOfTheDayCard } from '../components/BetofthedayCard';
 import { ProfileView } from './ProfileView';
 import type { LeaderboardEntry, Friend, SocialActivity } from '../models';
 import { DAILY_BONUS_AMOUNT } from '../models/constants';
-import { getBets, getUserMoney, listenForChange} from "@/services/dbOps.ts";
+import {FriendRequest, getBets, getUserMoney, listenForChange} from "@/services/dbOps.ts";
 import {betList, friendsList} from "@/services/authService.ts";
 
 type DashboardViewType = 'HOME' | 'MARKETS' | 'HISTORY' | 'LEADERBOARD' | 'SOCIAL' | 'PROFILE';
@@ -63,6 +63,9 @@ function pathToView(pathname: string): DashboardViewType {
 }
 
 interface DashboardViewProps {
+  userName: string;
+  userPrivacy: boolean;
+  friendReqs: FriendRequest[];
   balance: number;
   activeBets: Bet[];
   betList: Bet[];
@@ -100,6 +103,9 @@ interface DashboardViewProps {
 
 export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   const {
+    userName,
+    friendReqs,
+    userPrivacy,
     balance,
     betList,
     betSelection,
@@ -233,6 +239,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
       parlaySelections.some((sel) => sel.market.id === market.id && sel.option.id === option.id);
 
   const renderContent = () => {
+    console.log(userPrivacy)
     switch (view) {
       case 'HOME':
         return (
@@ -243,9 +250,8 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
       case 'LEADERBOARD':
         return <Leaderboard entries={leaderboardEntries} />;
       case 'SOCIAL':
-        return <SocialView friends={friends} activities={activity} onChallenge={onChallenge} bets={betList} />;
-      case 'SETTINGS':
-        return <SettingsView userEmail={userEmail} />;
+        return <SocialView friends={friends} activities={activity} onChallenge={onChallenge} bets={betList} userPrivacy={userPrivacy} friendRequests={friendReqs} userName={userName}/>;
+        /*
       case 'PROFILE':
         return (
           <ProfileView

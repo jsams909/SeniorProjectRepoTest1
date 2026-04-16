@@ -1,6 +1,8 @@
-import { setDoc, doc, getDoc, getDocs, onSnapshot, collection, Timestamp, runTransaction, deleteField, query, where, writeBatch, increment } from "firebase/firestore";
+import { setDoc, doc, getDoc, getDocs, onSnapshot, collection, deleteDoc, Timestamp, runTransaction, deleteField, query, where, writeBatch, increment, QueryDocumentSnapshot, DocumentData, DocumentReference, addDoc } from "firebase/firestore";
 import { db } from "@/models/constants.ts";
-import { Bet, LeaderboardEntry, ParlayLeg, BetStatus } from "@/models";
+import {Bet, LeaderboardEntry, ParlayLeg, BetStatus, Friend, SocialActivity} from "@/models";
+import {betList} from "@/services/authService.ts";
+import {randomInt} from "node:crypto";
 
 export var currBets = new Array<Bet>;
 
@@ -104,6 +106,54 @@ export async function setNewDaily(uid: string) {
     }, {merge: true})
 }
 
+export async function getUserName(uid : string) : Promise<string> {
+    const documentReference = doc(db, "userInfo", uid)
+    const documentSnapshot = await getDoc(documentReference)
+
+    if (documentSnapshot.exists()) {
+        const data = documentSnapshot.data()
+        return data["name"]
+    }
+}
+
+export async function getUidByUsername(name : string) : Promise<string> {
+    const querySnapshot = await getDocs(collection(db, "userInfo"))
+
+    for (const docSnap of querySnapshot.docs) {
+        const data = docSnap.data()
+        if (data["name"] == name) {
+            return docSnap.id
+        }
+    }
+}
+export async function setUserPrivacy(uid : string, access : boolean) {
+    await setDoc(doc(db, "userInfo", uid), {
+        privacy: access
+    }, {merge: true})
+}
+
+export async function getUserPrivacy(uid: string) : Promise<boolean> {
+    const documentReference = doc(db, "userInfo", uid)
+    const documentSnapshot = await getDoc(documentReference)
+
+    if (documentSnapshot.exists()) {
+        const data = documentSnapshot.data()
+        return data["privacy"]
+    }
+}
+
+export async function getFriendRequestsAsName(requests : FriendRequest[]) : Promise<FriendRequest[]> {
+    var friendRequestsAsName: FriendRequest[] = [];
+    for (const item of requests) {
+        const newFriendRequest = {
+            id: item.id,
+            sender: await getUserName(item.sender),
+            receiver: await getUserName(item.receiver)
+        };
+        friendRequestsAsName.push(newFriendRequest)
+    }
+    return friendRequestsAsName
+}
 /**
  * Adds to the user's current money in Firestore.
  * @param uid A user's Firebase Authentication ID.
@@ -800,7 +850,7 @@ export async function setUnlockedAchievements(uid: string, achievementIds: Accou
 
 export async function addFriend(name: string, currUid: string) {
     const querySnapshot = await getDocs(collection(db, "userInfo"))
-    let data: DocumentData;
+    var data;
     let friendId : string;
     for (const docSnap of querySnapshot.docs) {
         friendId = docSnap.id
@@ -852,18 +902,35 @@ export async function loadCommunityActivity() : Promise<SocialActivity[]> {
         const userData = documentSnapshot.data();
 
         if (userData == undefined) {
+            console.log("user does not exist, throwing out document")
             continue;
         }
 
-        const newSocialActivity : SocialActivity = {
-            id: docSnap.id,
-            userId: documentSnapshot.id,
-            userName: userData["name"],
-            userAvatar: userData["name"]?.slice(0, 2),
-            action: "placed a bet on",
-            target: data["marketTitle"],
-            timestamp: ""
+        let newSocialActivity: SocialActivity;
+
+        if (userData["access"] == true) {
+            newSocialActivity = {
+                id: docSnap.id,
+                userId: documentSnapshot.id,
+                userName: "Anonymous User",
+                userAvatar: "?",
+                action: "placed a bet on",
+                target: data["marketTitle"],
+                timestamp: ""
+            }
         }
+        else {
+            newSocialActivity = {
+                id: docSnap.id,
+                userId: documentSnapshot.id,
+                userName: userData["name"],
+                userAvatar: userData["name"]?.slice(0, 2),
+                action: "placed a bet on",
+                target: data["marketTitle"],
+                timestamp: ""
+            }
+        }
+
 
         const newBet : Bet = {
             id: docSnap.id,
@@ -882,6 +949,71 @@ export async function loadCommunityActivity() : Promise<SocialActivity[]> {
     return socialActivityList
 }
 
+export async function sendFriendRequest(username : string, senderUid : string) {
+    const querySnapshot = await getDocs(collection(db, "userInfo"));
+
+    for (const docSnap of querySnapshot.docs) {
+        const data = docSnap.data()
+        if (data["name"] == username) {
+            await addDoc(collection(db, "friendRequests"), {
+                sender: senderUid,
+                receiver: docSnap.id,
+            })
+            console.log("added friend")
+            break;
+        }
+    }
+}
+
+export interface FriendRequest {
+    id: string,
+    sender: string,
+    receiver: string,
+}
+
+export async function getFriendRequests(uid : string) : Promise<FriendRequest[]> {
+    const querySnapshot = await getDocs(collection(db, "friendRequests"))
+    var friendRequests : FriendRequest[] = []
+    for (const docSnap of querySnapshot.docs) {
+        const data = docSnap.data()
+        if (data["sender"] == uid || data["receiver"] == uid) {
+            const newFriendRequest = {
+                id: docSnap.id,
+                sender: data["sender"],
+                receiver: data["receiver"]
+            }
+            friendRequests.push(newFriendRequest)
+        }
+    }
+    return friendRequests
+}
+
+export async function handleFriendRequest (request : FriendRequest, accepted : boolean) {
+    if (accepted) {
+        console.log(request)
+        const querySnapshot = await getDocs(collection(db, "userInfo"));
+
+        for (const docSnap of querySnapshot.docs) {
+            const data = docSnap.data()
+            if (data["name"] == request.sender) {
+                addFriend(data["name"], await getUidByUsername(request.receiver))
+            }
+            else if (data["name"] == request.receiver) {
+                addFriend(data["name"], await getUidByUsername(request.sender))
+            }
+        }
+        const documentReference = doc(db, "friendRequests", request.id)
+
+        await deleteDoc(documentReference)
+        console.log("Deleted friend request from database.")
+    }
+    else {
+        const documentReference = doc(db, "friendRequests", request.id)
+
+        await deleteDoc(documentReference)
+        console.log("Deleted friend request from database.")
+    }
+}
 export async function getFriends(uid : string) : Promise<Friend[]> {
     const documentReference = doc(db, "userInfo", uid);
     const documentSnapshot = await getDoc(documentReference);
@@ -892,7 +1024,7 @@ export async function getFriends(uid : string) : Promise<Friend[]> {
         const data = documentSnapshot.data();
         friendsListAsString = data["friends"];
         if (data["friends"] == undefined) {
-
+            return []
         }
         for (const friend of friendsListAsString) {
             const friendDocumentReference = doc(db, "userInfo", friend);

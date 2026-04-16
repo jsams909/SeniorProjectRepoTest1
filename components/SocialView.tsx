@@ -2,9 +2,15 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {Bet, Friend, SocialActivity} from '../models';
-import {Users, Activity, Swords, Circle, ShieldCheck, ShieldOff, Search} from 'lucide-react';
-import {addFriend} from "@/services/dbOps.ts";
-import {betList} from "@/services/authService.ts";
+import {Users, Activity, Swords, Circle, ShieldCheck, ShieldOff, Search, UserPlus, UserPlus2} from 'lucide-react';
+import {
+  addFriend, FriendRequest,
+  getFriends,
+  getUserName,
+  getUserPrivacy, handleFriendRequest,
+  sendFriendRequest,
+  setUserPrivacy
+} from "@/services/dbOps.ts";
 import {Timestamp} from "firebase/firestore";
 
 interface SocialViewProps {
@@ -18,17 +24,23 @@ interface SocialViewProps {
 Just a note to anyone looking at this code, if I see a single change or a single commit that changes THIS FILE I'm going to
 delete the whole repository. signed aidan rodriguez at 2:04 am
  */
-export const SocialView: React.FC<SocialViewProps> = ({ friends, activities, onChallenge, bets }) => {
+export const SocialView: React.FC<SocialViewProps> = ({ friends, friendRequests, activities, onChallenge, bets, userPrivacy, userName }) => {
   const [searchQuery, onSearchChange] = useState("")
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [privacy, togglePrivacy] = useState(userPrivacy);
   const betList : Bet[] = bets;
   const toggleDetails = (id : string) => {
     setExpandedId(prev => (prev === id  ? null: id));
-
   }
-
+  const [visibleRequests, setVisibleRequests] = useState(friendRequests.filter(
+      request => request.receiver === userName
+  ))
+  useEffect(() => {
+    togglePrivacy(userPrivacy);
+  }, [userPrivacy])
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-in fade-in slide-in-from-right-4 duration-500">
+
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-in fade-in slide-in-from-right duration-500">
       {/* Friends List */}
       <div className="xl:col-span-1 space-y-6">
         <div>
@@ -57,7 +69,7 @@ export const SocialView: React.FC<SocialViewProps> = ({ friends, activities, onC
                   <p className="text-[10px] text-slate-500 uppercase font-bold">{friend.status} • {friend.lastActive}</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => onChallenge(friend)}
                 className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px] font-bold uppercase"
               >
@@ -67,7 +79,7 @@ export const SocialView: React.FC<SocialViewProps> = ({ friends, activities, onC
           ))}
           <button
               onClick={() =>
-                  addFriend(searchQuery, localStorage.getItem("uid"))}
+                  sendFriendRequest(searchQuery, localStorage.getItem("uid")).then(() => onSearchChange(""))}
               className="w-full py-3 rounded-2xl border border-dashed border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500 transition-all text-xs font-bold uppercase tracking-widest">
             + Add Friend
           </button>
@@ -82,17 +94,73 @@ export const SocialView: React.FC<SocialViewProps> = ({ friends, activities, onC
             />
           </div>
         </div>
+        {visibleRequests.length > 0 &&
+        <div>
+          <h2 className="text-2xl font-black text-white flex items-center gap-2">
+            <UserPlus2 className="text-blue-400" size={28} /> <p style={{ fontSize: '20px' }}>Friend Requests</p>
+          </h2>
+        </div>
+        }
+        <div className="space-y-3">
+          {visibleRequests.map(friendRequest => (friendRequest.receiver == userName &&
+              <div key={friendRequest.receiver} className="glass-card rounded-2xl p-4 flex items-center border border-dashed border-slate-800 justify-between group hover:border-blue-500/30 transition-all">
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    Request from {friendRequest.sender}
+                  </div>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => {handleFriendRequest(friendRequest, true);
+                        const newList = visibleRequests.filter((item) => item.id !== friendRequest.id);
+                        setVisibleRequests(newList)
+                        }}
+                      className="w-full py-3 rounded-2xl border border-dashed border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500 transition-all text-xs font-bold uppercase tracking-widest">
+                        Accept
+                    </button>
+                    <button
+                        onClick={() => {handleFriendRequest(friendRequest, false);
+                          const newList = visibleRequests.filter((item) => item.id !== friendRequest.id);
+                          setVisibleRequests(newList)
+                        }}
+                        className="w-full py-3 rounded-2xl border border-dashed border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500 transition-all text-xs font-bold uppercase tracking-widest">
+                      Refuse
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+          ))}
+        </div>
 
         <div className="p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10">
           <div className="flex items-center justify-between mb-2">
             <p className="text-[10px] font-bold text-indigo-400 uppercase flex items-center gap-1">
               <ShieldCheck size={12} /> Privacy Settings
             </p>
-            <div className="w-8 h-4 bg-indigo-600 rounded-full relative cursor-pointer">
-              <div className="absolute right-1 top-1 w-2 h-2 bg-white rounded-full" />
-            </div>
+            {!privacy && (
+                <div
+                    onClick={() => {
+                      setUserPrivacy(localStorage.getItem("uid"), !privacy)
+                          .then(() => {
+                            togglePrivacy(!privacy);
+
+                          })}}
+                    className="w-8 h-4 bg-slate-600 rounded-full relative cursor-pointer">
+                  <div className="absolute left-1 top-1 w-2 h-2 bg-white rounded-full"/>
+                </div>
+                )}
+            {privacy && (
+                <div
+                    onClick={() => {setUserPrivacy(localStorage.getItem("uid"), !privacy).then(() => togglePrivacy(!privacy))}}
+                    className="w-8 h-4 bg-indigo-600 rounded-full relative cursor-pointer">
+                  <div className="absolute right-1 top-1 w-2 h-2 bg-white rounded-full" />
+                </div>
+            )}
+
+
+
           </div>
-          <p className="text-[10px] text-slate-500">Your betting activity is currently visible to friends.</p>
+          <p className="text-[10px] text-slate-500">{privacy ? "Your betting history is only visible to friends." : "Your betting history is public."}</p>
         </div>
       </div>
 
@@ -137,42 +205,38 @@ export const SocialView: React.FC<SocialViewProps> = ({ friends, activities, onC
                   </button>
                 </div>
                 {expandedId === activity.id && (
-                   <div
-                       style = {{padding: '5px'}}
-                       className={"text-sm"}>
-                     <span className="font-bold text-slate-100">Stake: </span>
-                     <span> ${betList.find(obj => obj.id === activity.id).stake} </span>
-                   </div>
-
-                )}
-                {expandedId === activity.id && (
                     <div
-                        style = {{padding: '5px'}}
-                        className={"text-sm"}>
-                      <span className="font-bold text-slate-100"> Odds: </span>
-                      <span>{betList.find(obj => obj.id === activity.id).odds} </span>
+                        style = {{padding: '15px'}}
+                        className="">
+                    <div className="p-4 rounded-2xl bg-slate-500/5 border border-slate-500/10">
+                      <div
+                          style = {{padding: '5px'}}
+                          className={"text-sm"}>
+                        <span className="font-bold text-slate-100">Stake: </span>
+                        <span> ${betList.find(obj => obj.id === activity.id).stake} </span>
+                      </div>
+                      <div
+                          style = {{padding: '5px'}}
+                          className={"text-sm"}>
+                        <span className="font-bold text-slate-100"> Odds: </span>
+                        <span>{betList.find(obj => obj.id === activity.id).odds} </span>
+                      </div>
+                      <div
+                          style = {{padding: '5px'}}
+                          className={"text-sm"}>
+                        <span className="font-bold text-slate-100"> Potential Payout: </span>
+                        <span>{betList.find(obj => obj.id === activity.id).potentialPayout}</span>
+                      </div>
+                      <div
+                          style = {{padding: '5px'}}
+                          className={"text-sm"}>
+                        <span className="font-bold text-slate-100"> Placed on: </span>
+                        <span>{(betList.find(obj => obj.id === activity.id).placedAt as unknown as Timestamp).toDate().toLocaleString()}</span>
+                      </div>
                     </div>
-
-                )}
-                {expandedId === activity.id && (
-                    <div
-                        style = {{padding: '5px'}}
-                        className={"text-sm"}>
-                      <span className="font-bold text-slate-100"> Potential Payout: </span>
-                      <span>{betList.find(obj => obj.id === activity.id).potentialPayout}</span>
                     </div>
-
                 )}
-                {expandedId === activity.id && (
-                    <div
-                        style = {{padding: '5px'}}
-                        className={"text-sm"}>
-                      <span className="font-bold text-slate-100"> Placed on: </span>
-                      <span>{(betList.find(obj => obj.id === activity.id).placedAt as unknown as Timestamp).toDate().toLocaleString()}</span>
-                    </div>
-
-                )}
-              </div>
+                </div>
             </div>
           ))}
         </div>
