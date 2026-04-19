@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import {
   Settings,
   Trophy,
@@ -38,7 +38,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   activeBetsCount,
   currentUserId,
 }) => {
-  const { userId: routeUserId } = useParams<{ userId?: string }>();
+  // The app does not declare any <Route path="profile/:userId"> elements,
+  // so useParams() returns an empty object. Parse the uid out of the pathname
+  // ourselves so links like /profile/<uid> from the leaderboard, friends list,
+  // and activity feed actually resolve to that user.
+  const { pathname } = useLocation();
+  const routeUserId = (() => {
+    const segments = pathname
+      .replace(/^\/bethub\/?/, '')
+      .replace(/^\//, '')
+      .split('/')
+      .filter(Boolean);
+    return segments[0] === 'profile' && segments[1] ? segments[1] : undefined;
+  })();
   const profileUserId = routeUserId ?? currentUserId ?? null;
   const isOwnProfile = !routeUserId || routeUserId === currentUserId;
 
