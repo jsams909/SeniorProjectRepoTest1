@@ -9,13 +9,14 @@
     "dev:all": "concurrently \"npm run server\" \"cross-env VITE_USE_EXPRESS=1 npm run dev\"",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "seed:achievements": "node scripts/seed-achievement-definitions.js"
   },
   "dependencies": {
     "dotenv": "^17.3.1",
     "express": "^4.21.0",
-    "firebase": "^12.9.0",
-    "firebase-admin": "^13.8.0",
+    "firebase": "^12.11.0",
+     "firebase-admin": "^13.8.0",
     "lucide-react": "^0.563.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

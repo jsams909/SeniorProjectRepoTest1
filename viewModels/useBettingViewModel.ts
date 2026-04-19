@@ -52,6 +52,12 @@ export function useBettingViewModel() {
     getBets(uid).then((bets) => {
       setActiveBets(bets);
     }).catch(() => undefined);
+
+
+    return listenForChange(uid, ({ money, hasDailyBonus }) => {
+      setBalance(money);
+      setDailyBonusAvailable(hasDailyBonus);
+    });
   }, [localStorage.getItem("userEmail")]);
 
   /**

@@ -40,8 +40,12 @@ const App: React.FC = () => {
 
   return (
     <DashboardView
+        userName={dashboard.userName}
+        userPrivacy={dashboard.userPrivacy}
+        friendReqs={dashboard.friendReqs}
       balance={dashboard.betting.balance}
       activeBets={dashboard.betting.activeBets}
+      betList={dashboard.betList}
       betSelection={dashboard.betting.betSelection}
       parlaySelections={dashboard.betting.parlaySelections}
       dailyBonusAvailable={dashboard.betting.dailyBonusAvailable}
