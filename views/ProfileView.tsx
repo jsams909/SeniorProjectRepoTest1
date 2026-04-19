@@ -8,7 +8,10 @@ import {
   Target,
   Clock3,
   Check,
+  Swords,
 } from 'lucide-react';
+import { CounterBetModal } from '../components/CounterBetModal';
+import { proposeHeadToHead } from '@/services/dbOps';
 import {
   getAccountProfile,
   getBets,
@@ -73,6 +76,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isEditingAchievements, setIsEditingAchievements] = useState(false);
   const [isEditingBets, setIsEditingBets] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Counter-Bet (head-to-head) modal — only opens when viewing someone else's
+  // pending, single bet that has the eventId/sportKey needed to auto-settle.
+  const [counterBetTarget, setCounterBetTarget] = useState<Bet | null>(null);
+  const canFade = (bet: Bet): boolean => {
+    if (isOwnProfile) return false;
+    if ((bet.status ?? 'PENDING') !== 'PENDING') return false;
+    if (bet.betType === 'parlay') return false;
+    if (!bet.eventId || !bet.sportKey) return false;
+    if (bet.odds <= 1) return false;
+    if (bet.eventStartsAt && bet.eventStartsAt.getTime() <= Date.now()) return false;
+    return true;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -437,17 +453,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       {betsForSection.map((bet) => {
                         const isSelected = profileDisplay.bets.includes(bet.id);
                         const isClickable = isOwnProfile && isEditingBets;
+                        const showCounterBet = canFade(bet);
                         return (
-                        <button
+                        <div
                           key={bet.id}
-                          type="button"
-                          onClick={isClickable ? () => toggleBet(bet.id) : undefined}
-                          disabled={!isClickable}
-                          className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
+                          className={`rounded-xl border ${
                             isSelected
                               ? 'border-blue-500/60 bg-blue-500/10'
                               : 'border-slate-700 bg-slate-900/60'
-                          } ${isClickable ? 'cursor-pointer hover:border-blue-400/70' : 'cursor-default'}`}
+                          }`}
+                        >
+                        <button
+                          type="button"
+                          onClick={isClickable ? () => toggleBet(bet.id) : undefined}
+                          disabled={!isClickable}
+                          className={`w-full px-4 py-3 text-left transition-colors ${
+                            isClickable ? 'cursor-pointer hover:border-blue-400/70' : 'cursor-default'
+                          }`}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
@@ -467,6 +489,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             <span className="inline-flex items-center gap-1"><Clock3 size={12} /> {bet.placedAt.toLocaleString()}</span>
                           </div>
                         </button>
+                        {showCounterBet && (
+                          <div className="border-t border-slate-700/60 px-4 py-2 flex items-center justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setCounterBetTarget(bet)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-red-300 hover:bg-red-500/20 transition-colors"
+                            >
+                              <Swords size={12} /> Counter-Bet ${(Math.round(bet.stake * (bet.odds - 1) * 100) / 100).toFixed(2)}
+                            </button>
+                          </div>
+                        )}
+                        </div>
                       );
                       })}
                     </div>
@@ -493,6 +527,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
       </div>
+      {counterBetTarget && currentUserId && (
+        <CounterBetModal
+          bet={counterBetTarget}
+          ownerName={displayName}
+          balance={balance}
+          onConfirm={(originalBetId) => proposeHeadToHead(originalBetId, currentUserId)}
+          onClose={() => setCounterBetTarget(null)}
+        />
+      )}
     </div>
   );
 };

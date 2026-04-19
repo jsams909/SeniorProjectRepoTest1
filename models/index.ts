@@ -55,6 +55,7 @@ export interface Bet {
   status?: BetStatus;           // ← ADDED: undefined on old bets = treat as PENDING
   eventId?: string;             // ← ADDED: Odds API event ID (singles only)
   sportKey?: string;            // ← ADDED: e.g. "basketball_nba" (singles only)
+  eventStartsAt?: Date;         // ← ADDED: kickoff time (singles only) — used by H2H lock
   settledAt?: Date;             // ← ADDED
 }
 
@@ -95,4 +96,50 @@ export interface Challenge {
   marketTitle: string;
   stake: number;
   status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'COMPLETED';
+}
+
+// ── Head-to-Head (peer-to-peer side wager) ───────────────────────
+//
+// A challenger picks a pending bet placed by another user and proposes to
+// fade it. Stakes are odds-matched: the original puts up `stake = S`, the
+// challenger puts up `stake × (odds − 1)`. Total escrow = `S × odds`.
+// Winner of the underlying real-world event takes the entire escrow.
+//
+// The original bookmaker bet is independent and is settled by the existing
+// settleBet() flow against the user's wallet. This H2H is a separate side
+// pot that lives in its own Firestore collection.
+export type HeadToHeadStatus =
+  | 'PENDING_ACCEPT'      // challenger has paid in; original owner has not yet accepted
+  | 'ACCEPTED'            // both stakes escrowed; awaiting underlying event result
+  | 'DECLINED'            // original owner declined; challenger refunded
+  | 'CANCELLED'           // challenger withdrew before acceptance; challenger refunded
+  | 'WON_BY_ORIGINAL'    // original's pick won; original took the escrow
+  | 'WON_BY_CHALLENGER'  // original's pick lost; challenger took the escrow
+  | 'PUSH';               // event pushed/voided; both sides refunded
+
+export interface HeadToHead {
+  id: string;
+
+  // Pointer to the bet being faded (lives in the existing `bets` collection)
+  originalBetId: string;
+  originalUserId: string;
+  originalSide: string;          // optionLabel the original user took
+  originalOdds: number;          // decimal odds at the time of proposal
+  originalStake: number;         // S — what the original owner escrows on accept
+
+  // The user fading the original bet
+  challengerUserId: string;
+  challengerStake: number;       // S × (originalOdds − 1) — escrowed at proposal time
+
+  // Underlying event (so settlement can resolve automatically)
+  marketId: string;
+  marketTitle: string;
+  eventId: string;               // Odds API event id
+  sportKey: string;
+  eventStartsAt: Date;           // hard lock — no proposals/accepts after this
+
+  status: HeadToHeadStatus;
+  createdAt: Date;
+  acceptedAt?: Date;
+  settledAt?: Date;
 }

@@ -33,13 +33,15 @@ import { SettingsView } from './SettingsView';
 import { BetOfTheDayCard } from '../components/Betofthedaycard';
 import { BoostsCard } from '../components/Boostcard';
 import { ProfileView } from './ProfileView';
+import { HeadToHeadView } from './HeadToHeadView';
+import { Swords } from 'lucide-react';
 import type { LeaderboardEntry, Friend, SocialActivity } from '../models';
 import { BoostType } from '@/services/dbOps.ts';
 import { DAILY_BONUS_AMOUNT } from '../models/constants';
 import {FriendRequest, getBets, getUserMoney, listenForChange} from "@/services/dbOps.ts";
 import {betList, friendsList} from "@/services/authService.ts";
 
-type DashboardViewType = 'HOME' | 'MARKETS' | 'HISTORY' | 'LEADERBOARD' | 'SOCIAL' | 'PROFILE';
+type DashboardViewType = 'HOME' | 'MARKETS' | 'HISTORY' | 'LEADERBOARD' | 'SOCIAL' | 'PROFILE' | 'HEAD_TO_HEAD';
 
 function pathToView(pathname: string): DashboardViewType {
   const normalized = pathname.replace(/^\/bethub\/?/, '').replace(/^\//, '');
@@ -59,6 +61,8 @@ function pathToView(pathname: string): DashboardViewType {
       return 'LEADERBOARD';
     case 'history':
       return 'HISTORY';
+    case 'head-to-head':
+      return 'HEAD_TO_HEAD';
     default:
       return 'HOME';
   }
@@ -270,6 +274,12 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
             userEmail={userEmail}
             balance={balance}
             activeBetsCount={props.activeBets.length}
+            currentUserId={typeof localStorage !== 'undefined' ? localStorage.getItem('uid') : null}
+          />
+        );
+      case 'HEAD_TO_HEAD':
+        return (
+          <HeadToHeadView
             currentUserId={typeof localStorage !== 'undefined' ? localStorage.getItem('uid') : null}
           />
         );
@@ -687,6 +697,9 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
             </NavLink>
             <NavLink to="/history" title="History" className={({ isActive }) => `p-3 rounded-xl transition-all ${isActive ? 'bg-blue-600/10 text-blue-400' : 'text-slate-500 hover:bg-slate-800'}`}>
               <History size={24} />
+            </NavLink>
+            <NavLink to="/head-to-head" title="Head-to-Head" className={({ isActive }) => `p-3 rounded-xl transition-all ${isActive ? 'bg-red-500/10 text-red-400' : 'text-slate-500 hover:bg-slate-800'}`}>
+              <Swords size={24} />
             </NavLink>
             <NavLink to="/profile" title="Profile" className={({ isActive }) => `p-3 rounded-xl transition-all ${isActive ? 'bg-blue-600/10 text-blue-400' : 'text-slate-500 hover:bg-slate-800'}`}>
               <User size={24} />
