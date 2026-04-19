@@ -77,17 +77,33 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isEditingBets, setIsEditingBets] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Counter-Bet (head-to-head) modal — only opens when viewing someone else's
-  // pending, single bet that has the eventId/sportKey needed to auto-settle.
+  // Counter-Bet (head-to-head) modal target.
   const [counterBetTarget, setCounterBetTarget] = useState<Bet | null>(null);
-  const canFade = (bet: Bet): boolean => {
-    if (isOwnProfile) return false;
-    if ((bet.status ?? 'PENDING') !== 'PENDING') return false;
-    if (bet.betType === 'parlay') return false;
-    if (!bet.eventId || !bet.sportKey) return false;
-    if (bet.odds <= 1) return false;
-    if (bet.eventStartsAt && bet.eventStartsAt.getTime() <= Date.now()) return false;
-    return true;
+
+  // Decide whether to render the Counter-Bet button on a given bet, and if
+  // the button shows but isn't actually fadeable, explain why. We deliberately
+  // distinguish:
+  //   - 'hidden':   the button shouldn't even render (own profile)
+  //   - 'disabled': render the button greyed out + show the reason inline so
+  //                 the viewer understands why they can't fade
+  //   - 'enabled':  full Counter-Bet flow available
+  type FadeEligibility =
+    | { kind: 'hidden' }
+    | { kind: 'disabled'; reason: string }
+    | { kind: 'enabled' };
+  const fadeEligibility = (bet: Bet): FadeEligibility => {
+    if (isOwnProfile) return { kind: 'hidden' };
+    const status = bet.status ?? 'PENDING';
+    if (status !== 'PENDING')      return { kind: 'disabled', reason: `This bet is already ${status.toLowerCase()}.` };
+    if (bet.betType === 'parlay')  return { kind: 'disabled', reason: 'Parlays can\'t be faded yet.' };
+    if (!bet.eventId || !bet.sportKey) {
+      return { kind: 'disabled', reason: 'This bet is missing event info — too old to auto-settle a fade.' };
+    }
+    if (bet.odds <= 1)             return { kind: 'disabled', reason: 'Invalid odds — can\'t compute a fair fade.' };
+    if (bet.eventStartsAt && bet.eventStartsAt.getTime() <= Date.now()) {
+      return { kind: 'disabled', reason: 'Game has already started — too late to fade.' };
+    }
+    return { kind: 'enabled' };
   };
 
   useEffect(() => {
@@ -453,7 +469,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       {betsForSection.map((bet) => {
                         const isSelected = profileDisplay.bets.includes(bet.id);
                         const isClickable = isOwnProfile && isEditingBets;
-                        const showCounterBet = canFade(bet);
+                        const fade = fadeEligibility(bet);
+                        const challengerStake = Math.round(bet.stake * (bet.odds - 1) * 100) / 100;
                         return (
                         <div
                           key={bet.id}
@@ -489,14 +506,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             <span className="inline-flex items-center gap-1"><Clock3 size={12} /> {bet.placedAt.toLocaleString()}</span>
                           </div>
                         </button>
-                        {showCounterBet && (
+                        {fade.kind === 'enabled' && (
                           <div className="border-t border-slate-700/60 px-4 py-2 flex items-center justify-end">
                             <button
                               type="button"
                               onClick={() => setCounterBetTarget(bet)}
                               className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-red-300 hover:bg-red-500/20 transition-colors"
                             >
-                              <Swords size={12} /> Counter-Bet ${(Math.round(bet.stake * (bet.odds - 1) * 100) / 100).toFixed(2)}
+                              <Swords size={12} /> Counter-Bet ${challengerStake.toFixed(2)}
+                            </button>
+                          </div>
+                        )}
+                        {fade.kind === 'disabled' && (
+                          <div className="border-t border-slate-700/60 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[10px] uppercase tracking-wider text-slate-500">{fade.reason}</p>
+                            <button
+                              type="button"
+                              disabled
+                              title={fade.reason}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 cursor-not-allowed"
+                            >
+                              <Swords size={12} /> Counter-Bet
                             </button>
                           </div>
                         )}
