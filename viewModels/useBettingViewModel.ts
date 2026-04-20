@@ -101,6 +101,20 @@ export function useBettingViewModel() {
         }))
         : undefined;
 
+    // For singles, capture the underlying event so head-to-head proposals can
+    // enforce a "no fades after kickoff" lock. Parlays don't expose a single
+    // event, so leave these fields unset (H2H disallows parlays in v1).
+    const singleEventId       = isParlayBet ? undefined : betSelection.market.id;
+    const singleSportKey      = isParlayBet ? undefined : betSelection.market.sport_key;
+    const singleEventStartsAt = isParlayBet
+        ? undefined
+        : (() => {
+            const raw = betSelection.market.startTime;
+            if (!raw) return undefined;
+            const parsed = new Date(raw);
+            return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+          })();
+
     const newBet: Bet = {
       id:              Math.random().toString(36).substr(2, 9),
       marketId:        resolvedMarketId,
@@ -112,6 +126,9 @@ export function useBettingViewModel() {
       potentialPayout: stake * resolvedOdds,
       placedAt:        new Date(),
       parlayLegs,
+      eventId:         singleEventId,
+      sportKey:        singleSportKey,
+      eventStartsAt:   singleEventStartsAt,
     };
 
     // Use placeSingleBet (handles atomic debit + boost marking)

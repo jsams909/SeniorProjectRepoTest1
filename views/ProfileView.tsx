@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import {
   Settings,
   Trophy,
@@ -8,7 +8,10 @@ import {
   Target,
   Clock3,
   Check,
+  Swords,
 } from 'lucide-react';
+import { CounterBetModal } from '../components/CounterBetModal';
+import { proposeHeadToHead } from '@/services/dbOps';
 import {
   getAccountProfile,
   getBets,
@@ -38,7 +41,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   activeBetsCount,
   currentUserId,
 }) => {
-  const { userId: routeUserId } = useParams<{ userId?: string }>();
+  // The app does not declare any <Route path="profile/:userId"> elements,
+  // so useParams() returns an empty object. Parse the uid out of the pathname
+  // ourselves so links like /profile/<uid> from the leaderboard, friends list,
+  // and activity feed actually resolve to that user.
+  const { pathname } = useLocation();
+  const routeUserId = (() => {
+    const segments = pathname
+      .replace(/^\/bethub\/?/, '')
+      .replace(/^\//, '')
+      .split('/')
+      .filter(Boolean);
+    return segments[0] === 'profile' && segments[1] ? segments[1] : undefined;
+  })();
   const profileUserId = routeUserId ?? currentUserId ?? null;
   const isOwnProfile = !routeUserId || routeUserId === currentUserId;
 
@@ -61,6 +76,35 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isEditingAchievements, setIsEditingAchievements] = useState(false);
   const [isEditingBets, setIsEditingBets] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Counter-Bet (head-to-head) modal target.
+  const [counterBetTarget, setCounterBetTarget] = useState<Bet | null>(null);
+
+  // Decide whether to render the Counter-Bet button on a given bet, and if
+  // the button shows but isn't actually fadeable, explain why. We deliberately
+  // distinguish:
+  //   - 'hidden':   the button shouldn't even render (own profile)
+  //   - 'disabled': render the button greyed out + show the reason inline so
+  //                 the viewer understands why they can't fade
+  //   - 'enabled':  full Counter-Bet flow available
+  type FadeEligibility =
+    | { kind: 'hidden' }
+    | { kind: 'disabled'; reason: string }
+    | { kind: 'enabled' };
+  const fadeEligibility = (bet: Bet): FadeEligibility => {
+    if (isOwnProfile) return { kind: 'hidden' };
+    const status = bet.status ?? 'PENDING';
+    if (status !== 'PENDING')      return { kind: 'disabled', reason: `This bet is already ${status.toLowerCase()}.` };
+    if (bet.betType === 'parlay')  return { kind: 'disabled', reason: 'Parlays can\'t be faded yet.' };
+    if (!bet.eventId || !bet.sportKey) {
+      return { kind: 'disabled', reason: 'This bet is missing event info — too old to auto-settle a fade.' };
+    }
+    if (bet.odds <= 1)             return { kind: 'disabled', reason: 'Invalid odds — can\'t compute a fair fade.' };
+    if (bet.eventStartsAt && bet.eventStartsAt.getTime() <= Date.now()) {
+      return { kind: 'disabled', reason: 'Game has already started — too late to fade.' };
+    }
+    return { kind: 'enabled' };
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -425,17 +469,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       {betsForSection.map((bet) => {
                         const isSelected = profileDisplay.bets.includes(bet.id);
                         const isClickable = isOwnProfile && isEditingBets;
+                        const fade = fadeEligibility(bet);
+                        const challengerStake = Math.round(bet.stake * (bet.odds - 1) * 100) / 100;
                         return (
-                        <button
+                        <div
                           key={bet.id}
-                          type="button"
-                          onClick={isClickable ? () => toggleBet(bet.id) : undefined}
-                          disabled={!isClickable}
-                          className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
+                          className={`rounded-xl border ${
                             isSelected
                               ? 'border-blue-500/60 bg-blue-500/10'
                               : 'border-slate-700 bg-slate-900/60'
-                          } ${isClickable ? 'cursor-pointer hover:border-blue-400/70' : 'cursor-default'}`}
+                          }`}
+                        >
+                        <button
+                          type="button"
+                          onClick={isClickable ? () => toggleBet(bet.id) : undefined}
+                          disabled={!isClickable}
+                          className={`w-full px-4 py-3 text-left transition-colors ${
+                            isClickable ? 'cursor-pointer hover:border-blue-400/70' : 'cursor-default'
+                          }`}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
@@ -455,6 +506,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             <span className="inline-flex items-center gap-1"><Clock3 size={12} /> {bet.placedAt.toLocaleString()}</span>
                           </div>
                         </button>
+                        {fade.kind === 'enabled' && (
+                          <div className="border-t border-slate-700/60 px-4 py-2 flex items-center justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setCounterBetTarget(bet)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-red-300 hover:bg-red-500/20 transition-colors"
+                            >
+                              <Swords size={12} /> Counter-Bet ${challengerStake.toFixed(2)}
+                            </button>
+                          </div>
+                        )}
+                        {fade.kind === 'disabled' && (
+                          <div className="border-t border-slate-700/60 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[10px] uppercase tracking-wider text-slate-500">{fade.reason}</p>
+                            <button
+                              type="button"
+                              disabled
+                              title={fade.reason}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 cursor-not-allowed"
+                            >
+                              <Swords size={12} /> Counter-Bet
+                            </button>
+                          </div>
+                        )}
+                        </div>
                       );
                       })}
                     </div>
@@ -481,6 +557,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
       </div>
+      {counterBetTarget && currentUserId && (
+        <CounterBetModal
+          bet={counterBetTarget}
+          ownerName={displayName}
+          balance={balance}
+          onConfirm={(originalBetId) => proposeHeadToHead(originalBetId, currentUserId)}
+          onClose={() => setCounterBetTarget(null)}
+        />
+      )}
     </div>
   );
 };

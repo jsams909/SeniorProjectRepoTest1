@@ -8,10 +8,12 @@ import {
   getFriends,
   getUserName,
   getUserPrivacy, handleFriendRequest,
+  proposeHeadToHead,
   sendFriendRequest,
   setUserPrivacy
 } from "@/services/dbOps.ts";
 import {Timestamp} from "firebase/firestore";
+import { CounterBetModal } from './CounterBetModal';
 
 interface SocialViewProps {
   friends: Friend[];
@@ -32,6 +34,39 @@ export const SocialView: React.FC<SocialViewProps> = ({ friends, friendRequests,
   const toggleDetails = (id : string) => {
     setExpandedId(prev => (prev === id  ? null: id));
   }
+
+  // ── Counter-Bet (head-to-head) wiring ────────────────────────────
+  // Each activity row carries the bet doc id, so we can look up the full Bet
+  // off the `bets` prop and either open a CounterBetModal (fadeable) or show
+  // the user a disabled button with a reason (not fadeable). We deliberately
+  // skip own bets and parlays so the activity feed isn't cluttered with
+  // useless buttons.
+  const currentUid = typeof localStorage !== 'undefined' ? localStorage.getItem('uid') : null;
+  const currentBalance = typeof localStorage !== 'undefined'
+    ? Number(localStorage.getItem('userMoney') ?? 0)
+    : 0;
+  const [counterBetTarget, setCounterBetTarget] = useState<{ bet: Bet; ownerName: string } | null>(null);
+
+  type FadeEligibility =
+    | { kind: 'hidden' }
+    | { kind: 'disabled'; reason: string }
+    | { kind: 'enabled'; bet: Bet };
+
+  const fadeEligibilityFor = (activity: SocialActivity): FadeEligibility => {
+    if (currentUid && activity.userId === currentUid) return { kind: 'hidden' };
+    const bet = betList.find((b) => b.id === activity.id);
+    if (!bet)                          return { kind: 'disabled', reason: 'Bet details unavailable.' };
+    const status = bet.status ?? 'PENDING';
+    if (status !== 'PENDING')          return { kind: 'disabled', reason: `Already ${status.toLowerCase()}.` };
+    if (bet.betType === 'parlay')      return { kind: 'disabled', reason: 'Parlays can\'t be faded yet.' };
+    if (!bet.eventId || !bet.sportKey) return { kind: 'disabled', reason: 'Missing event info.' };
+    if (bet.odds <= 1)                 return { kind: 'disabled', reason: 'Invalid odds.' };
+    if (bet.eventStartsAt && bet.eventStartsAt.getTime() <= Date.now()) {
+      return { kind: 'disabled', reason: 'Game already started.' };
+    }
+    return { kind: 'enabled', bet };
+  };
+
   const [visibleRequests, setVisibleRequests] = useState(friendRequests.filter(
       request => request.receiver === userName
   ))
@@ -192,17 +227,39 @@ export const SocialView: React.FC<SocialViewProps> = ({ friends, friendRequests,
                   </p>
                   <span className="text-[10px] text-slate-600 font-bold uppercase">{activity.timestamp}</span>
                 </div>
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button
                       onClick={() => toggleDetails(activity.id)}
                       className="text-[10px] font-bold text-slate-500 hover:text-slate-300 flex items-center gap-1 uppercase tracking-tighter">
                     <Activity size={12} /> View Bet
                   </button>
 
-
-                  <button className="text-[10px] font-bold text-slate-500 hover:text-blue-400 flex items-center gap-1 uppercase tracking-tighter">
-                    <Swords size={12} /> Counter-Bet
-                  </button>
+                  {(() => {
+                    const fade = fadeEligibilityFor(activity);
+                    if (fade.kind === 'hidden') return null;
+                    if (fade.kind === 'enabled') {
+                      const challengerStake = Math.round(fade.bet.stake * (fade.bet.odds - 1) * 100) / 100;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setCounterBetTarget({ bet: fade.bet, ownerName: activity.userName })}
+                          className="text-[10px] font-bold text-red-400 hover:text-red-300 flex items-center gap-1 uppercase tracking-tighter"
+                        >
+                          <Swords size={12} /> Counter-Bet ${challengerStake.toFixed(2)}
+                        </button>
+                      );
+                    }
+                    return (
+                      <button
+                        type="button"
+                        disabled
+                        title={fade.reason}
+                        className="text-[10px] font-bold text-slate-600 cursor-not-allowed flex items-center gap-1 uppercase tracking-tighter"
+                      >
+                        <Swords size={12} /> Counter-Bet · {fade.reason}
+                      </button>
+                    );
+                  })()}
                 </div>
                 {expandedId === activity.id && (
                     <div
@@ -241,6 +298,15 @@ export const SocialView: React.FC<SocialViewProps> = ({ friends, friendRequests,
           ))}
         </div>
       </div>
+      {counterBetTarget && currentUid && (
+        <CounterBetModal
+          bet={counterBetTarget.bet}
+          ownerName={counterBetTarget.ownerName}
+          balance={currentBalance}
+          onConfirm={(originalBetId) => proposeHeadToHead(originalBetId, currentUid)}
+          onClose={() => setCounterBetTarget(null)}
+        />
+      )}
     </div>
   );
 };

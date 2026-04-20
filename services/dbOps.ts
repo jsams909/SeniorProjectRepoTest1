@@ -1,6 +1,6 @@
 import { setDoc, doc, getDoc, getDocs, onSnapshot, collection, deleteDoc, Timestamp, runTransaction, deleteField, query, where, writeBatch, increment, QueryDocumentSnapshot, DocumentData, DocumentReference, addDoc } from "firebase/firestore";
 import { db } from "@/models/constants.ts";
-import {Bet, LeaderboardEntry, ParlayLeg, BetStatus, Friend, SocialActivity} from "@/models";
+import {Bet, LeaderboardEntry, ParlayLeg, BetStatus, Friend, SocialActivity, HeadToHead, HeadToHeadStatus} from "@/models";
 import {betList} from "@/services/authService.ts";
 import {randomInt} from "node:crypto";
 
@@ -425,6 +425,7 @@ export async function placeSingleBet(uid: string, bet: Bet, boost: BoostType | n
                 status:          "PENDING",
                 eventId:         bet.eventId  ?? bet.marketId,
                 sportKey:        bet.sportKey ?? "",
+                eventStartsAt:   bet.eventStartsAt ? Timestamp.fromDate(bet.eventStartsAt) : null,
                 isFree:          false,
                 boostApplied:    boost ?? null,
             });
@@ -490,11 +491,12 @@ export async function getBets(uid: string): Promise<Bet[]> {
                     result:      leg.result ?? "PENDING",
                 }))
                 : [],
-            status:    (data.status   ?? "PENDING") as BetStatus,
-            eventId:   data.eventId,
-            sportKey:  data.sportKey,
-            settledAt: data.settledAt?.toDate(),
-            isFree:    data.isFree ?? false,
+            status:        (data.status   ?? "PENDING") as BetStatus,
+            eventId:       data.eventId,
+            sportKey:      data.sportKey,
+            eventStartsAt: data.eventStartsAt?.toDate?.(),
+            settledAt:     data.settledAt?.toDate?.(),
+            isFree:        data.isFree ?? false,
         };
         try {
             betList.push(validBet);
@@ -734,6 +736,7 @@ export async function placeFreeBet(
                 status:          "PENDING",
                 eventId:         betOfTheDay.eventId,
                 sportKey:        betOfTheDay.sportKey,
+                eventStartsAt:   betOfTheDay.startsAt,
                 isFree:          true,
             });
 
@@ -1005,16 +1008,35 @@ export async function addFriend(name: string, currUid: string) {
     }
 }
 
-export async function loadCommunityActivity() : Promise<SocialActivity[]> {
+export interface CommunityActivity {
+    activities: SocialActivity[];
+    bets: Bet[];
+}
+
+/**
+ * Loads every public bet document and returns both:
+ *   - a SocialActivity[] for the activity feed UI
+ *   - a Bet[] of the same docs (fully populated, including the head-to-head
+ *     fields eventId/sportKey/eventStartsAt/status/userID) so callers can
+ *     resolve full bet details without re-fetching
+ *
+ * Callers that only want the activity feed may keep using the legacy
+ * Promise<SocialActivity[]> shape via the .activities field on the result.
+ *
+ * @author Aidan Rodriguez (original); extended to return bets for H2H lookup
+ */
+export async function loadCommunityActivity() : Promise<CommunityActivity> {
     const querySnapshot = await getDocs(collection(db, "bets"))
-    var socialActivityList : SocialActivity[] = []
+    const socialActivityList : SocialActivity[] = []
+    const fullBetList : Bet[] = []
 
     for (const docSnap of querySnapshot.docs) {
         const data = docSnap.data();
 
-        var isSingleBet = (data["betType"] == undefined);
-        if (!isSingleBet) {
-            console.log("throwing out parlay document")
+        // Skip explicit parlays. Legacy bets written before the schema added
+        // betType have it `undefined` and should be treated as singles, so the
+        // check is "is this an explicit parlay?", not "is betType set?".
+        if (data["betType"] === "parlay") {
             continue;
         }
 
@@ -1053,22 +1075,35 @@ export async function loadCommunityActivity() : Promise<SocialActivity[]> {
             }
         }
 
-
+        // Build a fully-populated Bet so the activity feed's Counter-Bet
+        // button has every field fadeEligibility() needs. The legacy
+        // betList push (kept for backwards compat with anything else that
+        // imports it from authService) intentionally uses the same object.
+        const placedAtRaw     = data["placedAt"]      as Timestamp | undefined;
+        const eventStartsRaw  = data["eventStartsAt"] as Timestamp | undefined;
+        const settledAtRaw    = data["settledAt"]     as Timestamp | undefined;
         const newBet : Bet = {
-            id: docSnap.id,
-            marketId: data["marketId"],
-            marketTitle: data["marketTitle"],
-            optionLabel: data["optionLabel"],
-            stake: data["stake"],
-            odds: data["odds"],
-            potentialPayout: data["potentialPayout"],
-            placedAt: data["placedAt"]
+            id:              docSnap.id,
+            userID:          String(data["userID"] ?? ""),
+            marketId:        String(data["marketId"]    ?? ""),
+            marketTitle:     String(data["marketTitle"] ?? ""),
+            optionLabel:     String(data["optionLabel"] ?? ""),
+            betType:         data["betType"] === "parlay" ? "parlay" : "single",
+            stake:           Number(data["stake"])           || 0,
+            odds:            Number(data["odds"])            || 0,
+            potentialPayout: Number(data["potentialPayout"]) || 0,
+            placedAt:        placedAtRaw?.toDate?.() ?? new Date(0),
+            status:          (data["status"] ?? "PENDING") as BetStatus,
+            eventId:         data["eventId"]  ? String(data["eventId"])  : undefined,
+            sportKey:        data["sportKey"] ? String(data["sportKey"]) : undefined,
+            eventStartsAt:   eventStartsRaw?.toDate?.(),
+            settledAt:       settledAtRaw?.toDate?.(),
         }
         betList.push(newBet)
+        fullBetList.push(newBet)
         socialActivityList.push(newSocialActivity)
     }
-    console.log(betList)
-    return socialActivityList
+    return { activities: socialActivityList, bets: fullBetList }
 }
 
 export async function sendFriendRequest(username : string, senderUid : string) {
@@ -1167,4 +1202,410 @@ export async function getFriends(uid : string) : Promise<Friend[]> {
         }
     }
     return friendsList;
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  HEAD-TO-HEAD (peer-to-peer side wagers, odds-matched)
+//
+//  Stake math (decimal odds O):
+//    originalStake     = S          (escrowed when original owner accepts)
+//    challengerStake   = S × (O−1)  (escrowed at proposal time)
+//    totalEscrow       = S × O      (winner takes all)
+//
+//  Lifecycle:
+//    proposeHeadToHead → PENDING_ACCEPT (challenger funds escrow)
+//    acceptHeadToHead  → ACCEPTED       (original funds escrow)
+//    declineHeadToHead → DECLINED       (challenger refunded)
+//    cancelHeadToHead  → CANCELLED      (challenger refunded; only before accept)
+//    settleHeadToHead  → WON_BY_*       (called by settlement cron)
+//
+//  All money moves are atomic via runTransaction so we never half-debit.
+// ─────────────────────────────────────────────────────────────────
+
+const H2H_COLLECTION = "headToHead";
+
+export type ProposeHeadToHeadResult =
+    | { success: true; h2hId: string; challengerStake: number }
+    | { success: false; error:
+        | "BET_NOT_FOUND"
+        | "BET_ALREADY_SETTLED"
+        | "EVENT_STARTED"
+        | "OWN_BET"
+        | "PARLAY_UNSUPPORTED"
+        | "MISSING_EVENT_INFO"
+        | "INSUFFICIENT_FUNDS"
+        | "USER_NOT_FOUND"
+        | "DUPLICATE_PROPOSAL"
+        | "UNKNOWN" };
+
+/**
+ * Computes the challenger's odds-matched stake. Decimal odds only.
+ * Returns 0 (and the caller should reject) if odds are not > 1.
+ */
+function computeChallengerStake(originalStake: number, originalOdds: number): number {
+    if (!Number.isFinite(originalStake) || !Number.isFinite(originalOdds)) return 0;
+    if (originalOdds <= 1) return 0;
+    return Math.round(originalStake * (originalOdds - 1) * 100) / 100;
+}
+
+/**
+ * Challenger proposes to fade an existing pending bet.
+ * Atomically:
+ *   - validates the bet is still fadeable (pending, not started, not own)
+ *   - escrows the challenger's odds-matched stake
+ *   - writes a new headToHead/{id} doc with status PENDING_ACCEPT
+ *
+ * The original owner does NOT pay anything here — they pay when they accept.
+ * Free bets (`isFree: true`) are still fadeable; the challenger is paying real
+ * money against the free-bet pick, which is the original owner's choice to accept.
+ */
+export async function proposeHeadToHead(
+    originalBetId: string,
+    challengerUserId: string,
+): Promise<ProposeHeadToHeadResult> {
+    try {
+        const result = await runTransaction(db, async (transaction) => {
+            const betRef = doc(db, "bets", originalBetId);
+            const betSnap = await transaction.get(betRef);
+            if (!betSnap.exists()) throw new Error("BET_NOT_FOUND");
+
+            const betData = betSnap.data();
+
+            // Disallow fading the same bet twice from the same challenger
+            // (cheap dedupe — a stricter version would query at the collection level).
+            const existingId = `${originalBetId}_${challengerUserId}`;
+            const dupRef = doc(db, H2H_COLLECTION, existingId);
+            const dupSnap = await transaction.get(dupRef);
+            if (dupSnap.exists()) {
+                const dupStatus = dupSnap.data().status as HeadToHeadStatus;
+                if (dupStatus === "PENDING_ACCEPT" || dupStatus === "ACCEPTED") {
+                    throw new Error("DUPLICATE_PROPOSAL");
+                }
+            }
+
+            const originalUserId = String(betData.userID ?? "");
+            if (!originalUserId) throw new Error("BET_NOT_FOUND");
+            if (originalUserId === challengerUserId) throw new Error("OWN_BET");
+
+            const status = (betData.status ?? "PENDING") as BetStatus;
+            if (status !== "PENDING") throw new Error("BET_ALREADY_SETTLED");
+
+            const betType = betData.betType === "parlay" ? "parlay" : "single";
+            if (betType === "parlay") throw new Error("PARLAY_UNSUPPORTED");
+
+            const eventId  = String(betData.eventId  ?? "");
+            const sportKey = String(betData.sportKey ?? "");
+            if (!eventId || !sportKey) throw new Error("MISSING_EVENT_INFO");
+
+            const originalStake = Number(betData.stake) || 0;
+            const originalOdds  = Number(betData.odds)  || 0;
+            const challengerStake = computeChallengerStake(originalStake, originalOdds);
+            if (challengerStake <= 0) throw new Error("MISSING_EVENT_INFO");
+
+            // Hard lock: no fades after kickoff. Bets written before this field
+            // existed (legacy data) won't have eventStartsAt — those skip the
+            // lock and rely on the cron's existing settlement gating instead.
+            const eventStartsTs = betData.eventStartsAt as Timestamp | undefined;
+            const eventStartsDate = eventStartsTs?.toDate?.();
+            if (eventStartsDate && eventStartsDate.getTime() <= Date.now()) {
+                throw new Error("EVENT_STARTED");
+            }
+
+            const challengerRef = doc(db, "userInfo", challengerUserId);
+            const challengerSnap = await transaction.get(challengerRef);
+            if (!challengerSnap.exists()) throw new Error("USER_NOT_FOUND");
+
+            const challengerMoney = Number(challengerSnap.data().money) || 0;
+            if (challengerMoney < challengerStake) throw new Error("INSUFFICIENT_FUNDS");
+
+            const nowTs = Timestamp.now();
+
+            // Persist
+            transaction.set(dupRef, {
+                originalBetId,
+                originalUserId,
+                originalSide:    String(betData.optionLabel ?? ""),
+                originalOdds,
+                originalStake,
+                challengerUserId,
+                challengerStake,
+                marketId:        String(betData.marketId    ?? ""),
+                marketTitle:     String(betData.marketTitle ?? ""),
+                eventId,
+                sportKey,
+                eventStartsAt:   eventStartsTs ?? null,
+                status:          "PENDING_ACCEPT",
+                createdAt:       nowTs,
+            });
+
+            transaction.update(challengerRef, { money: challengerMoney - challengerStake });
+
+            return { id: existingId, challengerStake };
+        });
+
+        return { success: true, h2hId: result.id, challengerStake: result.challengerStake };
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : "";
+        switch (msg) {
+            case "BET_NOT_FOUND":
+            case "BET_ALREADY_SETTLED":
+            case "EVENT_STARTED":
+            case "OWN_BET":
+            case "PARLAY_UNSUPPORTED":
+            case "MISSING_EVENT_INFO":
+            case "INSUFFICIENT_FUNDS":
+            case "USER_NOT_FOUND":
+            case "DUPLICATE_PROPOSAL":
+                return { success: false, error: msg };
+            default:
+                return { success: false, error: "UNKNOWN" };
+        }
+    }
+}
+
+export type AcceptHeadToHeadResult =
+    | { success: true }
+    | { success: false; error:
+        | "H2H_NOT_FOUND"
+        | "WRONG_USER"
+        | "WRONG_STATUS"
+        | "EVENT_STARTED"
+        | "INSUFFICIENT_FUNDS"
+        | "USER_NOT_FOUND"
+        | "UNKNOWN" };
+
+/**
+ * Original bet owner accepts a pending H2H proposal.
+ * Atomically: escrows their odds-matched stake and flips status to ACCEPTED.
+ * Only the user identified by `originalUserId` on the H2H doc may accept.
+ */
+export async function acceptHeadToHead(
+    h2hId: string,
+    actingUserId: string,
+): Promise<AcceptHeadToHeadResult> {
+    try {
+        await runTransaction(db, async (transaction) => {
+            const h2hRef = doc(db, H2H_COLLECTION, h2hId);
+            const snap = await transaction.get(h2hRef);
+            if (!snap.exists()) throw new Error("H2H_NOT_FOUND");
+
+            const data = snap.data();
+            const status = data.status as HeadToHeadStatus;
+            if (status !== "PENDING_ACCEPT") throw new Error("WRONG_STATUS");
+            if (String(data.originalUserId) !== actingUserId) throw new Error("WRONG_USER");
+
+            // Re-check the kickoff lock at accept time (the game may have started
+            // between proposal and acceptance).
+            const eventStartsTs = data.eventStartsAt as Timestamp | undefined;
+            const eventStartsDate = eventStartsTs?.toDate?.();
+            if (eventStartsDate && eventStartsDate.getTime() <= Date.now()) {
+                throw new Error("EVENT_STARTED");
+            }
+
+            const originalStake = Number(data.originalStake) || 0;
+            if (originalStake <= 0) throw new Error("WRONG_STATUS");
+
+            const userRef = doc(db, "userInfo", actingUserId);
+            const userSnap = await transaction.get(userRef);
+            if (!userSnap.exists()) throw new Error("USER_NOT_FOUND");
+
+            const money = Number(userSnap.data().money) || 0;
+            if (money < originalStake) throw new Error("INSUFFICIENT_FUNDS");
+
+            transaction.update(userRef, { money: money - originalStake });
+            transaction.update(h2hRef, {
+                status: "ACCEPTED",
+                acceptedAt: Timestamp.now(),
+            });
+        });
+        return { success: true };
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : "";
+        switch (msg) {
+            case "H2H_NOT_FOUND":
+            case "WRONG_USER":
+            case "WRONG_STATUS":
+            case "EVENT_STARTED":
+            case "INSUFFICIENT_FUNDS":
+            case "USER_NOT_FOUND":
+                return { success: false, error: msg };
+            default:
+                return { success: false, error: "UNKNOWN" };
+        }
+    }
+}
+
+export type DeclineOrCancelResult =
+    | { success: true }
+    | { success: false; error: "H2H_NOT_FOUND" | "WRONG_USER" | "WRONG_STATUS" | "UNKNOWN" };
+
+/**
+ * Original bet owner declines a pending H2H proposal.
+ * Atomically refunds the challenger's escrow and flips status to DECLINED.
+ */
+export async function declineHeadToHead(
+    h2hId: string,
+    actingUserId: string,
+): Promise<DeclineOrCancelResult> {
+    return refundChallengerAndClose(h2hId, actingUserId, "DECLINED", "originalUserId");
+}
+
+/**
+ * Challenger withdraws their proposal before the original owner accepts.
+ * Atomically refunds the challenger and flips status to CANCELLED.
+ */
+export async function cancelHeadToHead(
+    h2hId: string,
+    actingUserId: string,
+): Promise<DeclineOrCancelResult> {
+    return refundChallengerAndClose(h2hId, actingUserId, "CANCELLED", "challengerUserId");
+}
+
+async function refundChallengerAndClose(
+    h2hId: string,
+    actingUserId: string,
+    nextStatus: "DECLINED" | "CANCELLED",
+    expectedActorField: "originalUserId" | "challengerUserId",
+): Promise<DeclineOrCancelResult> {
+    try {
+        await runTransaction(db, async (transaction) => {
+            const h2hRef = doc(db, H2H_COLLECTION, h2hId);
+            const snap = await transaction.get(h2hRef);
+            if (!snap.exists()) throw new Error("H2H_NOT_FOUND");
+
+            const data = snap.data();
+            const status = data.status as HeadToHeadStatus;
+            if (status !== "PENDING_ACCEPT") throw new Error("WRONG_STATUS");
+            if (String(data[expectedActorField]) !== actingUserId) throw new Error("WRONG_USER");
+
+            const challengerStake = Number(data.challengerStake) || 0;
+            const challengerUserId = String(data.challengerUserId);
+            const challengerRef = doc(db, "userInfo", challengerUserId);
+
+            // Refund using increment so we don't need a read of money here.
+            transaction.update(challengerRef, { money: increment(challengerStake) });
+            transaction.update(h2hRef, { status: nextStatus, settledAt: Timestamp.now() });
+        });
+        return { success: true };
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : "";
+        switch (msg) {
+            case "H2H_NOT_FOUND":
+            case "WRONG_USER":
+            case "WRONG_STATUS":
+                return { success: false, error: msg };
+            default:
+                return { success: false, error: "UNKNOWN" };
+        }
+    }
+}
+
+/** Convert a Firestore document into a typed HeadToHead object. */
+function mapHeadToHead(id: string, data: DocumentData): HeadToHead {
+    const eventStartsAtRaw = data.eventStartsAt as Timestamp | undefined;
+    const createdAtRaw     = data.createdAt     as Timestamp | undefined;
+    const acceptedAtRaw    = data.acceptedAt    as Timestamp | undefined;
+    const settledAtRaw     = data.settledAt     as Timestamp | undefined;
+    return {
+        id,
+        originalBetId:    String(data.originalBetId    ?? ""),
+        originalUserId:   String(data.originalUserId   ?? ""),
+        originalSide:     String(data.originalSide     ?? ""),
+        originalOdds:     Number(data.originalOdds)     || 0,
+        originalStake:    Number(data.originalStake)    || 0,
+        challengerUserId: String(data.challengerUserId ?? ""),
+        challengerStake:  Number(data.challengerStake)  || 0,
+        marketId:         String(data.marketId         ?? ""),
+        marketTitle:      String(data.marketTitle      ?? ""),
+        eventId:          String(data.eventId          ?? ""),
+        sportKey:         String(data.sportKey         ?? ""),
+        eventStartsAt:    eventStartsAtRaw ? eventStartsAtRaw.toDate() : new Date(0),
+        status:           (data.status ?? "PENDING_ACCEPT") as HeadToHeadStatus,
+        createdAt:        createdAtRaw ? createdAtRaw.toDate() : new Date(0),
+        acceptedAt:       acceptedAtRaw ? acceptedAtRaw.toDate() : undefined,
+        settledAt:        settledAtRaw  ? settledAtRaw.toDate()  : undefined,
+    };
+}
+
+/** All H2H proposals where the user is the challenger (sent by them). */
+export async function getOutgoingHeadToHead(uid: string): Promise<HeadToHead[]> {
+    const q = query(collection(db, H2H_COLLECTION), where("challengerUserId", "==", uid));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => mapHeadToHead(d.id, d.data()));
+}
+
+/** All H2H proposals where the user is the original bet owner (sent to them). */
+export async function getIncomingHeadToHead(uid: string): Promise<HeadToHead[]> {
+    const q = query(collection(db, H2H_COLLECTION), where("originalUserId", "==", uid));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => mapHeadToHead(d.id, d.data()));
+}
+
+/** Returns all ACCEPTED H2H docs across all users. Called by the settlement cron. */
+export async function getAcceptedHeadToHead(): Promise<HeadToHead[]> {
+    const q = query(collection(db, H2H_COLLECTION), where("status", "==", "ACCEPTED"));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => mapHeadToHead(d.id, d.data()));
+}
+
+/**
+ * Settles an accepted H2H bet and pays the winner (or refunds both on PUSH).
+ * Idempotent: if the doc is no longer in ACCEPTED status, this is a no-op.
+ *
+ * Called by the settlement cron after the underlying bet's status flips to
+ * WON / LOST / PUSH / CANCELLED. The mapping is:
+ *
+ *   underlying WON  → original picked the winning side → WON_BY_ORIGINAL
+ *   underlying LOST → original picked the losing side  → WON_BY_CHALLENGER
+ *   PUSH | CANCELLED                                   → PUSH (refund both)
+ *
+ * @author Cursor (head-to-head feature)
+ */
+export async function settleHeadToHead(
+    h2hId: string,
+    underlyingResult: "WON" | "LOST" | "PUSH" | "CANCELLED",
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        await runTransaction(db, async (transaction) => {
+            const h2hRef = doc(db, H2H_COLLECTION, h2hId);
+            const snap = await transaction.get(h2hRef);
+            if (!snap.exists()) throw new Error("H2H_NOT_FOUND");
+
+            const data = snap.data();
+            const status = data.status as HeadToHeadStatus;
+            if (status !== "ACCEPTED") return; // idempotent no-op
+
+            const originalUserId   = String(data.originalUserId);
+            const challengerUserId = String(data.challengerUserId);
+            const originalStake    = Number(data.originalStake)    || 0;
+            const challengerStake  = Number(data.challengerStake)  || 0;
+            const totalEscrow      = originalStake + challengerStake;
+
+            const originalRef   = doc(db, "userInfo", originalUserId);
+            const challengerRef = doc(db, "userInfo", challengerUserId);
+
+            let nextStatus: HeadToHeadStatus;
+            if (underlyingResult === "WON") {
+                transaction.update(originalRef,   { money: increment(totalEscrow) });
+                nextStatus = "WON_BY_ORIGINAL";
+            } else if (underlyingResult === "LOST") {
+                transaction.update(challengerRef, { money: increment(totalEscrow) });
+                nextStatus = "WON_BY_CHALLENGER";
+            } else {
+                // PUSH or CANCELLED — refund each side their own escrow
+                transaction.update(originalRef,   { money: increment(originalStake)   });
+                transaction.update(challengerRef, { money: increment(challengerStake) });
+                nextStatus = "PUSH";
+            }
+
+            transaction.update(h2hRef, {
+                status:    nextStatus,
+                settledAt: Timestamp.now(),
+            });
+        });
+        return { success: true };
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : "UNKNOWN";
+        return { success: false, error: msg };
+    }
 }
